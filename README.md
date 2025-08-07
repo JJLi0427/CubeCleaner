@@ -1,52 +1,106 @@
 # CubeCleaner
 
-Scan, visualize, and clean your Mac's storage—effortlessly see folder sizes and free up space.
+A macOS disk usage visualization application built with Swift and SwiftUI, inspired by GrandPerspective. CubeCleaner provides an intuitive tree map visualization of your disk usage, helping you identify large files and folders to manage your disk space effectively.
 
 ## Features
 
-### Disk Scanning
-- Scan files and folders to analyze disk usage
-- Configure scan parameters (depth, exclusions, etc.)
-- Save and load scan results
-- Track scan history
+- 🗂️ **Visual Disk Analysis**: Tree map visualization showing files as rectangles proportional to their size
+- 🎨 **Flexible Color Coding**: Color files by type, extension, size, date, or folder hierarchy
+- 🔍 **Advanced Filtering**: Filter by file size, type, date, and custom criteria
+- 📊 **Multiple Views**: Support for multiple simultaneous views and comparisons
+- 💾 **Save & Export**: Save scan results and export as images or data files
+- ⚡ **High Performance**: Optimized scanning and rendering for large file systems
+- 🖱️ **Interactive Navigation**: Mouse and keyboard navigation with zoom and pan
+- 🔗 **System Integration**: Quick Look preview, Finder integration, and file operations
 
-### 3D Visualization
-- View disk usage as interactive 3D cubes
-- Color files by type, modification date, size, parent folder, etc.
-- Navigate through the file hierarchy
-- Search for specific files
-- Show/hide hidden files and package contents
+## Documentation
 
-### AI Analysis
-- AI-powered recommendations for file cleanup
-- Identify unused, rarely used, duplicate, and temporary files
-- Get detailed explanations for each recommendation
-- Potential space savings calculations
+This project includes comprehensive documentation to guide development:
 
-### User-Friendly Interface
-- Intuitive tabbed interface
-- Detailed file information
-- Quick actions for common tasks
-- Customizable settings
-
-## Requirements
-
-- macOS 12.0 or later
-- Metal-compatible GPU
+- **[Requirements Documentation](docs/Requirements.md)** - Detailed functional and non-functional requirements
+- **[Interface Design Documentation](docs/Interface-Design.md)** - UI/UX design specifications and interaction patterns  
+- **[Programming Design Documentation](docs/Programming-Design.md)** - Architecture, models, and implementation details
 
 ## Project Structure
 
-- **Models**: Data structures for file system items, scan results, etc.
-- **Views**: SwiftUI views for the user interface
-- **ViewModels**: View models that connect the UI with the business logic
-- **Services**: Core functionality for scanning, visualization, and AI analysis
-- **Rendering**: Metal shaders and rendering code for 3D visualization
-- **Utilities**: Helper functions and extensions
+```
+CubeCleaner/
+├── docs/                          # Documentation
+│   ├── Requirements.md
+│   ├── Interface-Design.md
+│   └── Programming-Design.md
+├── CubeCleaner/
+│   ├── CubeCleaner/              # Main application
+│   │   ├── CubeCleanerApp.swift
+│   │   ├── ContentView.swift
+│   │   └── Assets.xcassets/
+│   └── CubeCleaner.xcodeproj/    # Xcode project
+└── README.md
+```
 
-## AI Integration
+## Getting Started
 
-CubeCleaner uses the OpenAI API to analyze files and provide cleanup recommendations. To use this feature:
+### Prerequisites
 
-1. Obtain an API key from [OpenAI](https://platform.openai.com/api-keys)
-2. Enter your API key in the app's settings
-3. Run a scan and use the AI Analysis tab to get recommendations
+- macOS 13.0 (Ventura) or later
+- Xcode 15.0 or later
+- Swift 5.9 or later
+
+### Building the Project
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/JJLi0427/CubeCleaner.git
+   cd CubeCleaner
+   ```
+
+2. Open the project in Xcode:
+   ```bash
+   open CubeCleaner/CubeCleaner.xcodeproj
+   ```
+
+3. Build and run the project (⌘+R)
+
+## Development Roadmap
+
+### Phase 1: Core Infrastructure
+- [ ] Basic project setup and architecture
+- [ ] File system scanning engine
+- [ ] Tree data structure implementation
+- [ ] Basic SwiftUI views
+
+### Phase 2: Visualization
+- [ ] Tree map layout algorithm
+- [ ] Rectangle rendering system
+- [ ] Color scheme implementation
+- [ ] Interactive navigation
+
+### Phase 3: User Interface
+- [ ] Main window layout
+- [ ] Sidebar and inspector panels
+- [ ] Toolbar and menu system
+- [ ] Preferences window
+
+### Phase 4: Advanced Features
+- [ ] Filtering system
+- [ ] Search functionality
+- [ ] Export capabilities
+- [ ] Multiple view support
+
+### Phase 5: Polish & Performance
+- [ ] Performance optimization
+- [ ] Error handling
+- [ ] Accessibility features
+- [ ] App Store preparation
+
+## Contributing
+
+We welcome contributions! Please read our contributing guidelines and feel free to submit issues and pull requests.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Inspiration
+
+This project is inspired by [GrandPerspective](https://apps.apple.com/app/grandperspective/id1111570163), an excellent disk usage visualization tool for macOS. CubeCleaner aims to provide a modern, SwiftUI-based alternative with enhanced features and performance.
