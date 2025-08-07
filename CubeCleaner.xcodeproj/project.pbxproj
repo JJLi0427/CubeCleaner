@@ -1,0 +1,448 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3A1234561234567800000001 /* CubeCleanerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000002 /* CubeCleanerApp.swift */; };
+		3A1234561234567800000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000004 /* ContentView.swift */; };
+		3A1234561234567800000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000006 /* Assets.xcassets */; };
+		3A1234561234567800000007 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000008 /* Preview Assets.xcassets */; };
+		3A1234561234567800000009 /* FileSystemItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000010 /* FileSystemItem.swift */; };
+		3A1234561234567800000011 /* ScanResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000012 /* ScanResult.swift */; };
+		3A1234561234567800000013 /* FileSystemScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000014 /* FileSystemScanner.swift */; };
+		3A1234561234567800000015 /* VisualizationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000016 /* VisualizationEngine.swift */; };
+		3A1234561234567800000017 /* CubeVisualizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000018 /* CubeVisualizationView.swift */; };
+		3A1234561234567800000019 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000020 /* SidebarView.swift */; };
+		3A1234561234567800000021 /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000022 /* DetailView.swift */; };
+		3A1234561234567800000023 /* ScannerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000024 /* ScannerViewModel.swift */; };
+		3A1234561234567800000025 /* VisualizationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000026 /* VisualizationViewModel.swift */; };
+		3A1234561234567800000027 /* FileOperationsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000028 /* FileOperationsManager.swift */; };
+		3A1234561234567800000029 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000030 /* AIService.swift */; };
+		3A1234561234567800000031 /* AIRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000032 /* AIRecommendation.swift */; };
+		3A1234561234567800000033 /* AIAnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000034 /* AIAnalysisViewModel.swift */; };
+		3A1234561234567800000035 /* AIRecommendationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000036 /* AIRecommendationView.swift */; };
+		3A1234561234567800000037 /* PersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000038 /* PersistenceService.swift */; };
+		3A1234561234567800000039 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1234561234567800000040 /* AppPreferences.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		3A1234561234567800000041 /* CubeCleaner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CubeCleaner.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3A1234561234567800000002 /* CubeCleanerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CubeCleanerApp.swift; sourceTree = "<group>"; };
+		3A1234561234567800000004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3A1234561234567800000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3A1234561234567800000008 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		3A1234561234567800000010 /* FileSystemItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemItem.swift; sourceTree = "<group>"; };
+		3A1234561234567800000012 /* ScanResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResult.swift; sourceTree = "<group>"; };
+		3A1234561234567800000014 /* FileSystemScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemScanner.swift; sourceTree = "<group>"; };
+		3A1234561234567800000016 /* VisualizationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizationEngine.swift; sourceTree = "<group>"; };
+		3A1234561234567800000018 /* CubeVisualizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CubeVisualizationView.swift; sourceTree = "<group>"; };
+		3A1234561234567800000020 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		3A1234561234567800000022 /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
+		3A1234561234567800000024 /* ScannerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerViewModel.swift; sourceTree = "<group>"; };
+		3A1234561234567800000026 /* VisualizationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizationViewModel.swift; sourceTree = "<group>"; };
+		3A1234561234567800000028 /* FileOperationsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationsManager.swift; sourceTree = "<group>"; };
+		3A1234561234567800000030 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
+		3A1234561234567800000032 /* AIRecommendation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRecommendation.swift; sourceTree = "<group>"; };
+		3A1234561234567800000034 /* AIAnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAnalysisViewModel.swift; sourceTree = "<group>"; };
+		3A1234561234567800000036 /* AIRecommendationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRecommendationView.swift; sourceTree = "<group>"; };
+		3A1234561234567800000038 /* PersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceService.swift; sourceTree = "<group>"; };
+		3A1234561234567800000040 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
+		3A1234561234567800000042 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3A1234561234567800000043 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3A1234561234567800000044 = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000045 /* CubeCleaner */,
+				3A1234561234567800000046 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000046 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000041 /* CubeCleaner.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000045 /* CubeCleaner */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000047 /* App */,
+				3A1234561234567800000048 /* Models */,
+				3A1234561234567800000049 /* Views */,
+				3A1234561234567800000050 /* ViewModels */,
+				3A1234561234567800000051 /* Services */,
+				3A1234561234567800000052 /* AI */,
+				3A1234561234567800000006 /* Assets.xcassets */,
+				3A1234561234567800000042 /* Info.plist */,
+				3A1234561234567800000053 /* Preview Content */,
+			);
+			name = CubeCleaner;
+			path = CubeCleaner;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000047 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000002 /* CubeCleanerApp.swift */,
+				3A1234561234567800000004 /* ContentView.swift */,
+				3A1234561234567800000040 /* AppPreferences.swift */,
+			);
+			name = App;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000048 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000010 /* FileSystemItem.swift */,
+				3A1234561234567800000012 /* ScanResult.swift */,
+			);
+			name = Models;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000049 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000018 /* CubeVisualizationView.swift */,
+				3A1234561234567800000020 /* SidebarView.swift */,
+				3A1234561234567800000022 /* DetailView.swift */,
+				3A1234561234567800000036 /* AIRecommendationView.swift */,
+			);
+			name = Views;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000050 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000024 /* ScannerViewModel.swift */,
+				3A1234561234567800000026 /* VisualizationViewModel.swift */,
+				3A1234561234567800000034 /* AIAnalysisViewModel.swift */,
+			);
+			name = ViewModels;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000051 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000014 /* FileSystemScanner.swift */,
+				3A1234561234567800000016 /* VisualizationEngine.swift */,
+				3A1234561234567800000028 /* FileOperationsManager.swift */,
+				3A1234561234567800000038 /* PersistenceService.swift */,
+			);
+			name = Services;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000052 /* AI */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000030 /* AIService.swift */,
+				3A1234561234567800000032 /* AIRecommendation.swift */,
+			);
+			name = AI;
+			sourceTree = "<group>";
+		};
+		3A1234561234567800000053 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				3A1234561234567800000008 /* Preview Assets.xcassets */,
+			);
+			name = "Preview Content";
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3A1234561234567800000054 /* CubeCleaner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3A1234561234567800000055 /* Build configuration list for PBXNativeTarget "CubeCleaner" */;
+			buildPhases = (
+				3A1234561234567800000043 /* Frameworks */,
+				3A1234561234567800000056 /* Sources */,
+				3A1234561234567800000057 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CubeCleaner;
+			productName = CubeCleaner;
+			productReference = 3A1234561234567800000041 /* CubeCleaner.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3A1234561234567800000058 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1430;
+				ORGANIZATIONNAME = "";
+				TargetAttributes = {
+					3A1234561234567800000054 = {
+						CreatedOnToolsVersion = 14.3;
+					};
+				};
+			};
+			buildConfigurationList = 3A1234561234567800000059 /* Build configuration list for PBXProject "CubeCleaner" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 3A1234561234567800000044;
+			productRefGroup = 3A1234561234567800000046 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3A1234561234567800000054 /* CubeCleaner */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3A1234561234567800000057 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A1234561234567800000007 /* Preview Assets.xcassets in Resources */,
+				3A1234561234567800000005 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3A1234561234567800000056 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A1234561234567800000003 /* ContentView.swift in Sources */,
+				3A1234561234567800000001 /* CubeCleanerApp.swift in Sources */,
+				3A1234561234567800000009 /* FileSystemItem.swift in Sources */,
+				3A1234561234567800000011 /* ScanResult.swift in Sources */,
+				3A1234561234567800000013 /* FileSystemScanner.swift in Sources */,
+				3A1234561234567800000015 /* VisualizationEngine.swift in Sources */,
+				3A1234561234567800000017 /* CubeVisualizationView.swift in Sources */,
+				3A1234561234567800000019 /* SidebarView.swift in Sources */,
+				3A1234561234567800000021 /* DetailView.swift in Sources */,
+				3A1234561234567800000023 /* ScannerViewModel.swift in Sources */,
+				3A1234561234567800000025 /* VisualizationViewModel.swift in Sources */,
+				3A1234561234567800000027 /* FileOperationsManager.swift in Sources */,
+				3A1234561234567800000029 /* AIService.swift in Sources */,
+				3A1234561234567800000031 /* AIRecommendation.swift in Sources */,
+				3A1234561234567800000033 /* AIAnalysisViewModel.swift in Sources */,
+				3A1234561234567800000035 /* AIRecommendationView.swift in Sources */,
+				3A1234561234567800000037 /* PersistenceService.swift in Sources */,
+				3A1234561234567800000039 /* AppPreferences.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3A1234561234567800000060 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		3A1234561234567800000061 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		3A1234561234567800000062 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CubeCleaner/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CubeCleaner/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.CubeCleaner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		3A1234561234567800000063 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CubeCleaner/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CubeCleaner/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.CubeCleaner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3A1234561234567800000059 /* Build configuration list for PBXProject "CubeCleaner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3A1234561234567800000060 /* Debug */,
+				3A1234561234567800000061 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3A1234561234567800000055 /* Build configuration list for PBXNativeTarget "CubeCleaner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3A1234561234567800000062 /* Debug */,
+				3A1234561234567800000063 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 3A1234561234567800000058 /* Project object */;
+}
