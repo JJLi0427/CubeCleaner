@@ -1,0 +1,41 @@
+# 忽略Node.js项目中的依赖文件夹
+node_modules/
+
+# 忽略日志文件
+*.log
+
+# 忽略操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 忽略Swift项目中的构建产物
+build/
+
+# 忽略Swift项目中的Xcode生成的文件
+# *.xcworkspace
+# *.xcodeproj
+
+# 忽略Swift项目的DerivedData
+DerivedData/
+
+# 忽略Swift项目的Carthage依赖
+Carthage/
+
+# 忽略Swift项目的Pods依赖
+Pods/
+
+# 忽略Swift项目的Buck构建文件
+buck-out/
+
+# 忽略Swift项目的Fastlane构建文件
+fastlane/
+
+# 忽略Swift项目的Yarn依赖
+yarn.lock
+
+# 忽略Swift项目的Package依赖
+Package.pins
+Package.resolved
+
+# vscode配置文件夹
+.vscode/
