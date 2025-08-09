@@ -13,7 +13,7 @@
       "source.fixAll": "explicit",
       "source.organizeImports": "explicit"
     },
-    "swift.path": "/usr/bin/swift",
+    "swift.path": "swift",
     "github.copilot.enable": {
       "*": true,
       "plaintext": true,
@@ -38,17 +38,17 @@
       "activityBarBadge.background": "#528bff"
     }
   },
-  "extensions": {
-    "recommendations": [
-      "github.copilot",
-      "github.copilot-chat",
-      "ms-vscode.vscode-swift",
-      "sswg.swift-lang",
-      "yzhang.markdown-all-in-one",
-      "bierner.markdown-mermaid",
-      "ms-vscode.live-server"
-    ]
-  },
+  // "extensions": {
+  //   "recommendations": [
+  //     "github.copilot",
+  //     "github.copilot-chat",
+  //     "ms-vscode.vscode-swift",
+  //     "sswg.swift-lang",
+  //     "yzhang.markdown-all-in-one",
+  //     "bierner.markdown-mermaid",
+  //     "ms-vscode.live-server"
+  //   ]
+  // },
   "tasks": {
     "version": "2.0.0",
     "tasks": [
