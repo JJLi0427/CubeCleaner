@@ -1,0 +1,67 @@
+{
+  "copilot": {
+    "instructions": ".copilot-instructions.md",
+    "workspace": {
+      "projectType": "swiftui-macos-app",
+      "language": "swift",
+      "framework": "swiftui",
+      "architecture": "mvvm",
+      "progressTracking": {
+        "enabled": true,
+        "file": "PROJECT_PROGRESS.md",
+        "autoUpdate": true
+      },
+      "documentation": {
+        "enabled": true,
+        "autoGenerate": true,
+        "style": "swift-docc"
+      },
+      "requirements": {
+        "tracking": true,
+        "file": "docs/Requirements.md",
+        "changeLog": true
+      },
+      "codeStyle": {
+        "swiftFormat": true,
+        "swiftLint": true,
+        "conventions": "apple-swift-guidelines"
+      }
+    },
+    "responseTemplate": {
+      "alwaysInclude": [
+        "development",
+        "documentation",
+        "requirements",
+        "progressTracking"
+      ],
+      "sections": {
+        "development": {
+          "title": "🔧 开发实现",
+          "required": true,
+          "includes": ["code", "architecture", "testing"]
+        },
+        "documentation": {
+          "title": "📚 文档更新",
+          "required": true,
+          "includes": ["api-docs", "comments", "examples"]
+        },
+        "requirements": {
+          "title": "📋 需求记录",
+          "required": true,
+          "includes": ["requirements-change", "priority", "tracking"]
+        },
+        "progressTracking": {
+          "title": "📊 进度跟踪",
+          "required": true,
+          "includes": ["task-status", "milestones", "metrics"]
+        }
+      }
+    },
+    "autoTasks": {
+      "updateProgress": true,
+      "generateDocs": true,
+      "trackRequirements": true,
+      "logWork": true
+    }
+  }
+}

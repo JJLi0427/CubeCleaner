@@ -1,0 +1,99 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "*.swift": "swift"
+    },
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "swift.path": "swift",
+    "github.copilot.enable": {
+      "*": true,
+      "plaintext": true,
+      "markdown": true,
+      "swift": true
+    },
+    "github.copilot.editor.enableAutoCompletions": true,
+    "github.copilot.chat.enable": true,
+    "files.watcherExclude": {
+      "**/build/**": true,
+      "**/DerivedData/**": true,
+      "**/.git/**": true
+    },
+    "search.exclude": {
+      "**/build": true,
+      "**/DerivedData": true
+    },
+    "markdown.preview.markdownItPlugins": true,
+    "workbench.colorCustomizations": {
+      "activityBar.background": "#2f3349",
+      "activityBar.foreground": "#d7dae0",
+      "activityBarBadge.background": "#528bff"
+    }
+  },
+  // "extensions": {
+  //   "recommendations": [
+  //     "github.copilot",
+  //     "github.copilot-chat",
+  //     "ms-vscode.vscode-swift",
+  //     "sswg.swift-lang",
+  //     "yzhang.markdown-all-in-one",
+  //     "bierner.markdown-mermaid",
+  //     "ms-vscode.live-server"
+  //   ]
+  // },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Update Progress",
+        "type": "shell",
+        "command": "./scripts/update_progress.sh",
+        "group": "build",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        },
+        "options": {
+          "cwd": "${workspaceFolder}"
+        }
+      },
+      {
+        "label": "Build Project",
+        "type": "shell",
+        "command": "xcodebuild",
+        "args": [
+          "-project",
+          "CubeCleaner.xcodeproj",
+          "-scheme",
+          "CubeCleaner",
+          "-configuration",
+          "Debug",
+          "build"
+        ],
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        },
+        "options": {
+          "cwd": "${workspaceFolder}"
+        }
+      }
+    ]
+  }
+}
