@@ -39,3 +39,5 @@ Package.resolved
 
 # vscode配置文件夹
 .vscode/
+
+.github/
