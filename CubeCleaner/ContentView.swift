@@ -16,7 +16,7 @@ struct ContentView: View {
     @State private var selectedNode: TreeNode?
     @State private var showingDetails = false
     @State private var showingFilePicker = false
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // 工具栏
@@ -29,16 +29,16 @@ struct ContentView: View {
 
                 if fileSystemService.isScanning {
                     Spacer()
-                    
+
                     Button("取消扫描") {
                         fileSystemService.cancelScan()
                     }
                     .foregroundColor(.red)
                     .buttonStyle(.bordered)
                 }
-                
+
                 Spacer()
-                
+
                 // 状态信息
                 VStack(alignment: .trailing, spacing: 2) {
                     if let selectedPath = selectedPath {
@@ -46,47 +46,49 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
+
                     if fileSystemService.rootNode != nil {
-                        Text("文件总数: \(fileSystemService.filesScanned) | 总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                        Text(
+                            "文件总数: \(fileSystemService.filesScanned) | 总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))"
+                        )
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                     }
                 }
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
-            
+
             Divider()
-            
+
             // 主内容区域
             GeometryReader { geometry in
                 ZStack {
                     Color(.controlBackgroundColor)
-                    
+
                     if rectangles.isEmpty && !fileSystemService.isScanning {
                         // 空状态界面
                         VStack(spacing: 16) {
                             Image(systemName: "folder.badge.questionmark")
                                 .font(.system(size: 64))
                                 .foregroundColor(.secondary)
-                            
+
                             VStack(spacing: 8) {
                                 Text("选择一个文件夹开始扫描")
                                     .font(.title2)
                                     .foregroundColor(.primary)
-                                
+
                                 Text("点击上方的\"选择文件夹\"按钮开始分析磁盘使用情况")
                                     .font(.body)
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
                             }
-                            
-                            Button("选择文件夹") {
-                                showingFilePicker = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
+
+                            // Button("选择文件夹") {
+                            //     showingFilePicker = true
+                            // }
+                            // .buttonStyle(.borderedProminent)
+                            // .controlSize(.large)
                         }
                         .frame(maxWidth: 400)
                     } else if !rectangles.isEmpty {
@@ -112,23 +114,25 @@ struct ContentView: View {
                         VStack(spacing: 16) {
                             ProgressView()
                                 .scaleEffect(1.5)
-                            
+
                             Text("正在扫描文件系统...")
                                 .font(.title2)
                                 .foregroundColor(.primary)
-                            
+
                             ProgressView(value: fileSystemService.scanProgress)
                                 .frame(width: 300)
-                            
+
                             VStack(spacing: 4) {
                                 Text("\(fileSystemService.filesScanned) 个文件已扫描")
                                     .font(.body)
                                     .foregroundColor(.secondary)
-                                
-                                Text("总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
+
+                                Text(
+                                    "总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))"
+                                )
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
                                 if !fileSystemService.currentPath.isEmpty {
                                     Text("当前: \(fileSystemService.currentPath)")
                                         .font(.caption2)
@@ -137,7 +141,7 @@ struct ContentView: View {
                                         .frame(maxWidth: 500)
                                 }
                             }
-                            
+
                             Button("取消扫描") {
                                 fileSystemService.cancelScan()
                             }
@@ -155,20 +159,22 @@ struct ContentView: View {
                     updateLayout(size: geometry.size)
                 }
             }
-            
+
             // 详情面板
             if showingDetails {
                 DetailsPanelView(
-                    selectedNode: $selectedNode, 
-                    showingDetails: $showingDetails, 
+                    selectedNode: $selectedNode,
+                    showingDetails: $showingDetails,
                     fileSystemService: fileSystemService
                 )
             }
-            
+
             // 状态栏
             HStack {
                 if let rootNode = fileSystemService.rootNode {
-                    Text("总大小: \(ByteCountFormatter.string(fromByteCount: rootNode.totalSize, countStyle: .file))")
+                    Text(
+                        "总大小: \(ByteCountFormatter.string(fromByteCount: rootNode.totalSize, countStyle: .file))"
+                    )
                     Spacer()
                     Text("文件数: \(fileSystemService.filesScanned)")
                 } else if let errorMessage = fileSystemService.errorMessage {
@@ -205,13 +211,13 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private func updateLayout(size: CGSize) {
         guard let rootNode = fileSystemService.rootNode, size.width > 0, size.height > 0 else {
             rectangles = []
             return
         }
-        
+
         let rect = CGRect(origin: .zero, size: size)
         rectangles = layoutCalculator.calculateLayout(for: rootNode, in: rect)
     }
@@ -220,21 +226,21 @@ struct ContentView: View {
 struct TreeMapRectangleView: View {
     let rectangle: TreeMapRectangle
     @State private var isHovered = false
-    
+
     var body: some View {
         ZStack {
             // 背景矩形
             Rectangle()
                 .fill(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
                 .stroke(
-                    rectangle.isImportant ? Color.primary.opacity(0.4) : Color.primary.opacity(0.2), 
+                    rectangle.isImportant ? Color.primary.opacity(0.4) : Color.primary.opacity(0.2),
                     lineWidth: rectangle.isImportant ? 1.5 : 0.5
                 )
                 .shadow(
-                    color: .black.opacity(isHovered ? 0.3 : 0.1), 
+                    color: .black.opacity(isHovered ? 0.3 : 0.1),
                     radius: isHovered ? 3 : 1
                 )
-            
+
             // 内容标签
             if rectangle.shouldShowLabel {
                 VStack(spacing: 2) {
@@ -247,7 +253,7 @@ struct TreeMapRectangleView: View {
                             .lineLimit(1)
                             .multilineTextAlignment(.center)
                     }
-                    
+
                     // 大小信息
                     if rectangle.canShowSize {
                         Text(rectangle.formattedSize)
@@ -255,7 +261,7 @@ struct TreeMapRectangleView: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
-                    
+
                     // 详细信息（文件夹子项数量）
                     if rectangle.canShowDetails && rectangle.node.item.isDirectory {
                         Text(rectangle.childrenDescription)
@@ -267,9 +273,11 @@ struct TreeMapRectangleView: View {
                 .padding(2)
                 .frame(maxWidth: rectangle.rect.width - 4, maxHeight: rectangle.rect.height - 4)
             }
-            
+
             // 文件类型图标（仅对重要文件显示）
-            if rectangle.isImportant && !rectangle.node.item.isDirectory && rectangle.rect.width > 30 && rectangle.rect.height > 30 {
+            if rectangle.isImportant && !rectangle.node.item.isDirectory
+                && rectangle.rect.width > 30 && rectangle.rect.height > 30
+            {
                 VStack {
                     HStack {
                         Spacer()
@@ -298,7 +306,7 @@ struct TreeMapRectangleView: View {
         }
         .help(makeTooltipText())
     }
-    
+
     /**
      * 根据文件扩展名返回合适的图标
      */
@@ -325,7 +333,7 @@ struct TreeMapRectangleView: View {
             return "doc"
         }
     }
-    
+
     /**
      * 生成工具提示文本
      */
@@ -333,11 +341,11 @@ struct TreeMapRectangleView: View {
         var tooltip = "\(rectangle.node.item.name)\n"
         tooltip += "大小: \(rectangle.formattedSize)\n"
         tooltip += "类型: \(rectangle.node.item.isDirectory ? "文件夹" : "文件")\n"
-        
+
         if rectangle.node.item.isDirectory && !rectangle.node.children.isEmpty {
             tooltip += "包含: \(rectangle.node.children.count) 项\n"
         }
-        
+
         tooltip += "路径: \(rectangle.node.item.path.path)"
         return tooltip
     }
@@ -348,52 +356,56 @@ struct DetailsPanelView: View {
     @Binding var selectedNode: TreeNode?
     @Binding var showingDetails: Bool
     let fileSystemService: FileSystemService
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("文件详情")
                     .font(.headline)
-                
+
                 Spacer()
-                
-                Button("×") {
+
+                Button("x") {
                     showingDetails = false
                     selectedNode = nil
                 }
                 .buttonStyle(.plain)
             }
-            
+
             if let selectedNode = selectedNode {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(selectedNode.item.name)
                         .font(.title3)
                         .fontWeight(.medium)
-                    
-                    Text("大小: \(ByteCountFormatter.string(fromByteCount: selectedNode.totalSize, countStyle: .file))")
-                        .font(.body)
-                    
+
+                    Text(
+                        "大小: \(ByteCountFormatter.string(fromByteCount: selectedNode.totalSize, countStyle: .file))"
+                    )
+                    .font(.body)
+
                     Text("类型: \(selectedNode.item.isDirectory ? "文件夹" : "文件")")
                         .font(.body)
-                    
+
                     Text("路径:")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    
+
                     Text(selectedNode.item.path.path)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     if selectedNode.item.isDirectory && !selectedNode.children.isEmpty {
-                        ChildrenListView(selectedNode: selectedNode, onSelectChild: { child in
-                            self.selectedNode = child
-                        })
+                        ChildrenListView(
+                            selectedNode: selectedNode,
+                            onSelectChild: { child in
+                                self.selectedNode = child
+                            })
                     }
-                    
+
                     Spacer()
-                    
+
                     ActionsView(
                         selectedNode: selectedNode,
                         fileSystemService: fileSystemService,
@@ -415,36 +427,39 @@ struct DetailsPanelView: View {
 struct ChildrenListView: View {
     let selectedNode: TreeNode
     let onSelectChild: (TreeNode) -> Void
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            
+
             Text("子项目 (\(selectedNode.children.count))")
                 .font(.headline)
-            
+
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
                     ForEach(selectedNode.children.prefix(50), id: \.item.path) { child in
                         HStack {
                             Image(systemName: child.item.isDirectory ? "folder" : "doc")
                                 .foregroundColor(child.item.isDirectory ? .blue : .gray)
-                            
+
                             Text(child.item.name)
                                 .lineLimit(1)
-                            
+
                             Spacer()
-                            
-                            Text(ByteCountFormatter.string(fromByteCount: child.totalSize, countStyle: .file))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+
+                            Text(
+                                ByteCountFormatter.string(
+                                    fromByteCount: child.totalSize, countStyle: .file)
+                            )
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 1)
                         .onTapGesture {
                             onSelectChild(child)
                         }
                     }
-                    
+
                     if selectedNode.children.count > 50 {
                         Text("还有 \(selectedNode.children.count - 50) 个项目...")
                             .font(.caption)
@@ -462,7 +477,7 @@ struct ActionsView: View {
     let selectedNode: TreeNode
     let fileSystemService: FileSystemService
     let onClose: () -> Void
-    
+
     var body: some View {
         VStack(spacing: 8) {
             Button("在Finder中显示") {
@@ -472,7 +487,7 @@ struct ActionsView: View {
                 )
             }
             .buttonStyle(.borderedProminent)
-            
+
             if selectedNode.item.isDirectory {
                 Button("重新扫描此文件夹") {
                     fileSystemService.scanDirectory(at: selectedNode.item.path)
