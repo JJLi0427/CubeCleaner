@@ -271,8 +271,7 @@ class TreeNode: ObservableObject, Identifiable, Equatable {
     
     var totalSize: Int64 {
         if item.isDirectory {
-            // 目录的总大小只计算非0字节的子文件
-            return children.reduce(0) { $0 + $1.totalSize }
+            return children.reduce(item.size) { $0 + $1.totalSize }
         }
         return item.size
     }
@@ -381,14 +380,9 @@ class ColorSchemeManager: ObservableObject {
     func adjustedColor(for node: TreeNode, maxSize: Int64) -> Color {
         let baseColor = color(for: node)
         
-        if maxSize > 0 && node.totalSize > 0 {
+        if maxSize > 0 {
             let ratio = Double(node.totalSize) / Double(maxSize)
-            
-            // 透明度范围调整
-            let minOpacity = 0.4
-            let maxOpacity = 1.0
-            let opacity = minOpacity + (ratio * (maxOpacity - minOpacity))
-            
+            let opacity = 0.3 + (ratio * 0.7) // 透明度范围 0.3 - 1.0
             return baseColor.opacity(opacity)
         }
         
@@ -404,40 +398,106 @@ struct TreeMapRectangle: Identifiable {
     let color: Color
     let level: Int
     
+    /**
+     * 是否显示标签的判断逻辑
+     * 基于矩形的实际可视大小，确保标签可读性
+     */
     var shouldShowLabel: Bool {
-        // 降低标签显示的阈值，让更多小文件显示名称
-        rect.width > 40 && rect.height > 20
+        // 矩形需要足够大才显示标签
+        return rect.width > 50 && rect.height > 20
     }
     
+    /**
+     * 智能显示名称
+     * 根据可用空间自动调整显示内容
+     */
     var displayName: String {
-        let maxLength = max(3, Int(rect.width / 6)) // 调整字符长度计算
-        if node.item.name.count > maxLength && maxLength > 3 {
-            return String(node.item.name.prefix(maxLength - 3)) + "..."
+        let availableWidth = rect.width - 8 // 减去padding
+        let estimatedCharWidth: CGFloat = 7 // 估算字符宽度
+        let maxChars = Int(availableWidth / estimatedCharWidth)
+        
+        guard maxChars > 3 else { return "" }
+        
+        let name = node.item.name
+        if name.count <= maxChars {
+            return name
+        } else {
+            // 智能截断：保留文件扩展名
+            if !node.item.isDirectory && name.contains(".") {
+                let components = name.split(separator: ".", maxSplits: 1)
+                if components.count == 2 {
+                    let namepart = String(components[0])
+                    let ext = String(components[1])
+                    let availableForName = maxChars - ext.count - 4 // "...ext"
+                    if availableForName > 0 {
+                        return String(namepart.prefix(availableForName)) + "..." + ext
+                    }
+                }
+            }
+            // 普通截断
+            return String(name.prefix(maxChars - 3)) + "..."
         }
-        return node.item.name
     }
     
+    /**
+     * 是否显示大小信息
+     * 只有在矩形足够大的情况下才显示
+     */
     var canShowSize: Bool {
-        // 降低大小显示的阈值
-        rect.width > 60 && rect.height > 30
+        return rect.width > 80 && rect.height > 35
     }
     
+    /**
+     * 是否显示详细信息（文件数量等）
+     */
+    var canShowDetails: Bool {
+        return rect.width > 120 && rect.height > 50
+    }
+    
+    /**
+     * 格式化的大小字符串
+     */
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: node.totalSize, countStyle: .file)
     }
     
-    var isVisible: Bool {
-        // 确保即使是很小的矩形也能显示
-        rect.width >= 1.0 && rect.height >= 1.0
+    /**
+     * 矩形的重要程度（用于决定显示优先级）
+     * 基于大小和层级
+     */
+    var importance: Double {
+        let sizeWeight = Double(node.totalSize)
+        let levelWeight = 1.0 / Double(level + 1) // 层级越深权重越小
+        return sizeWeight * levelWeight
+    }
+    
+    /**
+     * 是否为重要节点（大文件/文件夹）
+     */
+    var isImportant: Bool {
+        return node.totalSize > 10_000_000 // 大于10MB认为是重要的
+    }
+    
+    /**
+     * 获取子文件数量描述
+     */
+    var childrenDescription: String {
+        guard node.item.isDirectory else { return "" }
+        let count = node.children.count
+        if count == 0 {
+            return "空文件夹"
+        } else {
+            return "\(count) 项"
+        }
     }
 }
 
 // MARK: - TreeMap布局计算器
 class TreeMapLayoutCalculator: ObservableObject {
     private let colorSchemeManager = ColorSchemeManager.shared
-    private let minRectSize: CGFloat = 1.0 // 降低最小矩形大小，显示更多小文件
-    private let maxDepth: Int = 8 // 增加最大显示深度
-    private let minVisibleArea: CGFloat = 4.0 // 最小可见区域
+    private let minRectSize: CGFloat = 8.0 // 最小可辨识矩形大小
+    private let minLabelSize: CGFloat = 30.0 // 最小标签显示大小
+    private let maxDepth: Int = 8 // 最大显示深度，增加以支持更深层次
     
     func calculateLayout(for node: TreeNode, in rect: CGRect) -> [TreeMapRectangle] {
         guard rect.width >= minRectSize && rect.height >= minRectSize else {
@@ -447,400 +507,157 @@ class TreeMapLayoutCalculator: ObservableObject {
         return calculateLayoutRecursive(for: node, in: rect, level: 0)
     }
     
+    /**
+     * 递归计算TreeMap布局
+     * 核心逻辑：
+     * 1. 统计子文件夹和文件的大小
+     * 2. 在较长的边按比例划分
+     * 3. 文件直接填色，文件夹递归划分
+     * 4. 持续到区域难以辨识为止
+     */
     private func calculateLayoutRecursive(for node: TreeNode, in rect: CGRect, level: Int) -> [TreeMapRectangle] {
         var rectangles: [TreeMapRectangle] = []
         
-        // 过滤掉0字节文件，只保留有实际大小的文件和目录
-        let validChildren = node.children.filter { child in
-            // 保留目录（即使大小为0，因为可能包含有大小的子文件）
-            // 或者保留大小大于0的文件
-            child.item.isDirectory || child.totalSize > 0
-        }
-        
-        // 如果是叶子节点或达到最大深度，或者区域太小无法再分割
-        if validChildren.isEmpty || level >= maxDepth || rect.width * rect.height < minVisibleArea * CGFloat(validChildren.count) {
-            // 对于叶子节点，如果是0字节文件则不显示
-            if !node.item.isDirectory && node.totalSize == 0 {
-                return rectangles // 返回空数组，不显示0字节文件
-            }
-            
-            let maxSize = findMaxSize(in: node)
+        // 检查区域是否太小，难以辨识
+        if rect.width < minRectSize || rect.height < minRectSize || level >= maxDepth {
             let rectangle = TreeMapRectangle(
                 node: node,
                 rect: rect,
-                color: colorSchemeManager.adjustedColor(for: node, maxSize: maxSize),
+                color: colorSchemeManager.adjustedColor(for: node, maxSize: findMaxSize(in: node)),
                 level: level
             )
             rectangles.append(rectangle)
             return rectangles
         }
         
-        // 按大小排序子节点
-        let sortedChildren = validChildren.sorted { 
-            $0.totalSize > $1.totalSize 
+        // 如果是叶子节点（文件），直接填色
+        if node.children.isEmpty {
+            let rectangle = TreeMapRectangle(
+                node: node,
+                rect: rect,
+                color: colorSchemeManager.adjustedColor(for: node, maxSize: findMaxSize(in: node)),
+                level: level
+            )
+            rectangles.append(rectangle)
+            return rectangles
         }
         
-        // 使用优化的布局算法
-        let childRectangles = layoutChildrenImproved(sortedChildren, in: rect, level: level + 1)
+        // 过滤掉太小的子节点，避免显示无意义的细小区域
+        let validChildren = node.children.filter { child in
+            let totalSize = node.children.reduce(0) { $0 + $1.totalSize }
+            guard totalSize > 0 else { return false }
+            
+            // 只显示占比超过0.5%的子项
+            let proportion = Double(child.totalSize) / Double(totalSize)
+            return proportion > 0.005
+        }
+        
+        // 如果没有有效子节点，作为叶子节点处理
+        guard !validChildren.isEmpty else {
+            let rectangle = TreeMapRectangle(
+                node: node,
+                rect: rect,
+                color: colorSchemeManager.adjustedColor(for: node, maxSize: findMaxSize(in: node)),
+                level: level
+            )
+            rectangles.append(rectangle)
+            return rectangles
+        }
+        
+        // 按大小排序子节点，大的在前面
+        let sortedChildren = validChildren.sorted { $0.totalSize > $1.totalSize }
+        
+        // 按照较长的边进行划分
+        let childRectangles = layoutChildrenByLongerEdge(sortedChildren, in: rect, level: level + 1)
         rectangles.append(contentsOf: childRectangles)
         
         return rectangles
     }
     
-    private func layoutChildrenImproved(_ children: [TreeNode], in rect: CGRect, level: Int) -> [TreeMapRectangle] {
+    /**
+     * 基于较长边进行子节点布局
+     * 算法逻辑：
+     * 1. 判断矩形的较长边（宽度 vs 高度）
+     * 2. 沿着较长的边按比例划分区域
+     * 3. 为每个子节点分配对应的矩形区域
+     * 4. 递归处理每个子区域
+     */
+    private func layoutChildrenByLongerEdge(_ children: [TreeNode], in rect: CGRect, level: Int) -> [TreeMapRectangle] {
         var rectangles: [TreeMapRectangle] = []
-        guard !children.isEmpty else { return rectangles }
+        let totalSize = children.reduce(0) { $0 + $1.totalSize }
         
-        // 只处理有实际大小的文件，不需要为0字节文件分配空间
-        let childrenWithSize = children.compactMap { child -> (TreeNode, Int64)? in
-            let size = child.totalSize
-            // 只保留大小大于0的文件，或者是目录（目录可能包含有大小的子文件）
-            if size > 0 || child.item.isDirectory {
-                return (child, size)
-            }
-            return nil
-        }
-        
-        guard !childrenWithSize.isEmpty else { return rectangles }
-        
-        let totalSize = childrenWithSize.reduce(0) { $0 + $1.1 }
         guard totalSize > 0 else { return rectangles }
         
-        // 使用改进的 Squarified TreeMap 算法
-        let childRectangles = squarifyLayoutImproved(childrenWithMinSize: childrenWithSize, in: rect, totalSize: totalSize, level: level)
-        rectangles.append(contentsOf: childRectangles)
+        // 判断较长的边
+        let isWidthLonger = rect.width >= rect.height
         
-        return rectangles
-    }
-    
-    // MARK: - Improved Squarified TreeMap Algorithm
-    private func squarifyLayoutImproved(childrenWithMinSize: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        guard !childrenWithMinSize.isEmpty else { return [] }
-        
-        var rectangles: [TreeMapRectangle] = []
-        var remaining = childrenWithMinSize
-        var currentRect = rect
-        
-        while !remaining.isEmpty {
-            // 如果剩余区域太小，强制布局剩余所有节点
-            if currentRect.width < minRectSize || currentRect.height < minRectSize {
-                let remainingRectangles = layoutRemainingNodes(remaining, in: currentRect, totalSize: totalSize, level: level)
-                rectangles.append(contentsOf: remainingRectangles)
-                break
-            }
+        if isWidthLonger {
+            // 宽度更长，沿水平方向划分
+            var currentX = rect.minX
             
-            // 找到最佳的行布局
-            let (row, restNodes) = findBestRowImproved(from: remaining, in: currentRect, totalSize: totalSize)
-            
-            // 布局当前行
-            let rowRectangles = layoutRowImproved(row, in: currentRect, totalSize: totalSize, level: level)
-            rectangles.append(contentsOf: rowRectangles)
-            
-            // 更新剩余区域
-            currentRect = getRemainingRectImproved(from: currentRect, after: row, totalSize: totalSize)
-            remaining = restNodes
-        }
-        
-        return rectangles
-    }
-    
-    private func layoutRemainingNodes(_ nodes: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        guard !nodes.isEmpty else { return rectangles }
-        
-        // 简单的网格布局作为后备方案
-        let cols = max(1, Int(sqrt(Double(nodes.count))))
-        let rows = max(1, (nodes.count + cols - 1) / cols)
-        
-        let cellWidth = rect.width / CGFloat(cols)
-        let cellHeight = rect.height / CGFloat(rows)
-        
-        for (index, (node, _)) in nodes.enumerated() {
-            let row = index / cols
-            let col = index % cols
-            
-            let cellRect = CGRect(
-                x: rect.minX + CGFloat(col) * cellWidth,
-                y: rect.minY + CGFloat(row) * cellHeight,
-                width: cellWidth,
-                height: cellHeight
-            )
-            
-            let childRectangles = calculateLayoutRecursive(for: node, in: cellRect, level: level)
-            rectangles.append(contentsOf: childRectangles)
-        }
-        
-        return rectangles
-    }
-    
-    private func findBestRowImproved(from nodes: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64) -> ([(TreeNode, Int64)], [(TreeNode, Int64)]) {
-        guard !nodes.isEmpty else { return ([], []) }
-        
-        var bestRow: [(TreeNode, Int64)] = [nodes[0]]
-        var bestAspectRatio = Double.infinity
-        
-        // 限制单行最大节点数，避免过细分割
-        let maxRowSize = min(nodes.count, 20)
-        
-        for i in 1..<min(nodes.count, maxRowSize) {
-            let currentRow = Array(nodes[0...i])
-            let aspectRatio = calculateWorstAspectRatioImproved(for: currentRow, in: rect, totalSize: totalSize)
-            
-            if aspectRatio < bestAspectRatio {
-                bestRow = currentRow
-                bestAspectRatio = aspectRatio
-            } else {
-                // 长宽比开始变差，停止
-                break
-            }
-        }
-        
-        let remaining = Array(nodes[bestRow.count...])
-        return (bestRow, remaining)
-    }
-    
-    private func calculateWorstAspectRatioImproved(for row: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64) -> Double {
-        let rowSize = row.reduce(0) { $0 + $1.1 }
-        guard rowSize > 0 else { return Double.infinity }
-        
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let isVertical = rect.height > rect.width
-        let rowThickness = isVertical ? rowArea / rect.width : rowArea / rect.height
-        
-        guard rowThickness > 0 else { return Double.infinity }
-        
-        var worstRatio = 0.0
-        
-        for (_, size) in row {
-            let nodeArea = rowArea * CGFloat(size) / CGFloat(rowSize)
-            let nodeLength = nodeArea / rowThickness
-            
-            let ratio = max(nodeLength / rowThickness, rowThickness / nodeLength)
-            worstRatio = max(worstRatio, Double(ratio))
-        }
-        
-        return worstRatio
-    }
-    
-    private func layoutRowImproved(_ row: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        let rowSize = row.reduce(0) { $0 + $1.1 }
-        guard rowSize > 0 else { return rectangles }
-        
-        let isVertical = rect.height > rect.width
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let rowRect: CGRect
-        if isVertical {
-            // 垂直布局：行占据顶部区域
-            let rowHeight = min(rect.height, max(minRectSize, rowArea / rect.width))
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rowHeight)
-        } else {
-            // 水平布局：行占据左侧区域
-            let rowWidth = min(rect.width, max(minRectSize, rowArea / rect.height))
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rowWidth, height: rect.height)
-        }
-        
-        // 在行内布局节点
-        var currentPos: CGFloat = isVertical ? rowRect.minX : rowRect.minY
-        
-        for (node, size) in row {
-            let nodeArea = rowArea * CGFloat(size) / CGFloat(rowSize)
-            let nodeRect: CGRect
-            
-            if isVertical {
-                let nodeWidth = max(minRectSize, nodeArea / rowRect.height)
-                nodeRect = CGRect(
-                    x: currentPos,
-                    y: rowRect.minY,
-                    width: min(nodeWidth, rowRect.maxX - currentPos),
-                    height: rowRect.height
+            for child in children {
+                let proportion = CGFloat(child.totalSize) / CGFloat(totalSize)
+                let width = rect.width * proportion
+                
+                // 确保最小宽度
+                let actualWidth = max(width, minRectSize)
+                
+                let childRect = CGRect(
+                    x: currentX,
+                    y: rect.minY,
+                    width: actualWidth,
+                    height: rect.height
                 )
-                currentPos += nodeRect.width
-            } else {
-                let nodeHeight = max(minRectSize, nodeArea / rowRect.width)
-                nodeRect = CGRect(
-                    x: rowRect.minX,
-                    y: currentPos,
-                    width: rowRect.width,
-                    height: min(nodeHeight, rowRect.maxY - currentPos)
-                )
-                currentPos += nodeRect.height
+                
+                // 检查子区域是否足够大，值得进一步划分
+                if childRect.width >= minRectSize && childRect.height >= minRectSize {
+                    // 递归计算子布局
+                    let childRectangles = calculateLayoutRecursive(for: child, in: childRect, level: level)
+                    rectangles.append(contentsOf: childRectangles)
+                }
+                
+                currentX += actualWidth
+                
+                // 防止超出边界
+                if currentX >= rect.maxX {
+                    break
+                }
             }
+        } else {
+            // 高度更长，沿垂直方向划分
+            var currentY = rect.minY
             
-            // 确保矩形不超出边界
-            let clampedRect = CGRect(
-                x: max(rect.minX, nodeRect.minX),
-                y: max(rect.minY, nodeRect.minY),
-                width: max(minRectSize, min(nodeRect.width, rect.maxX - nodeRect.minX)),
-                height: max(minRectSize, min(nodeRect.height, rect.maxY - nodeRect.minY))
-            )
-            
-            // 递归计算子布局
-            let childRectangles = calculateLayoutRecursive(for: node, in: clampedRect, level: level)
-            rectangles.append(contentsOf: childRectangles)
+            for child in children {
+                let proportion = CGFloat(child.totalSize) / CGFloat(totalSize)
+                let height = rect.height * proportion
+                
+                // 确保最小高度
+                let actualHeight = max(height, minRectSize)
+                
+                let childRect = CGRect(
+                    x: rect.minX,
+                    y: currentY,
+                    width: rect.width,
+                    height: actualHeight
+                )
+                
+                // 检查子区域是否足够大，值得进一步划分
+                if childRect.width >= minRectSize && childRect.height >= minRectSize {
+                    // 递归计算子布局
+                    let childRectangles = calculateLayoutRecursive(for: child, in: childRect, level: level)
+                    rectangles.append(contentsOf: childRectangles)
+                }
+                
+                currentY += actualHeight
+                
+                // 防止超出边界
+                if currentY >= rect.maxY {
+                    break
+                }
+            }
         }
         
         return rectangles
-    }
-    
-    private func getRemainingRectImproved(from rect: CGRect, after row: [(TreeNode, Int64)], totalSize: Int64) -> CGRect {
-        let rowSize = row.reduce(0) { $0 + $1.1 }
-        guard totalSize > 0 else { return rect }
-        
-        let ratio = CGFloat(rowSize) / CGFloat(totalSize)
-        let isVertical = rect.height > rect.width
-        
-        if isVertical {
-            let usedHeight = min(rect.height, max(minRectSize, rect.height * ratio))
-            return CGRect(
-                x: rect.minX,
-                y: rect.minY + usedHeight,
-                width: rect.width,
-                height: max(minRectSize, rect.height - usedHeight)
-            )
-        } else {
-            let usedWidth = min(rect.width, max(minRectSize, rect.width * ratio))
-            return CGRect(
-                x: rect.minX + usedWidth,
-                y: rect.minY,
-                width: max(minRectSize, rect.width - usedWidth),
-                height: rect.height
-            )
-        }
-    }
-    
-        
-    // MARK: - Improved Squarified TreeMap Algorithm
-    
-    private func findBestRow(from nodes: [TreeNode], in rect: CGRect, totalSize: Int64) -> ([TreeNode], [TreeNode]) {
-        guard !nodes.isEmpty else { return ([], []) }
-        
-        var bestRow: [TreeNode] = [nodes[0]]
-        var bestAspectRatio = Double.infinity
-        
-        for i in 1..<nodes.count {
-            let currentRow = Array(nodes[0...i])
-            let aspectRatio = calculateWorstAspectRatio(for: currentRow, in: rect, totalSize: totalSize)
-            
-            if aspectRatio < bestAspectRatio {
-                bestRow = currentRow
-                bestAspectRatio = aspectRatio
-            } else {
-                // 长宽比开始变差，停止
-                break
-            }
-        }
-        
-        let remaining = Array(nodes[bestRow.count...])
-        return (bestRow, remaining)
-    }
-    
-    private func calculateWorstAspectRatio(for row: [TreeNode], in rect: CGRect, totalSize: Int64) -> Double {
-        let rowSize = row.reduce(0) { $0 + $1.totalSize }
-        guard rowSize > 0 else { return Double.infinity }
-        
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let isVertical = rect.height > rect.width
-        let rowThickness = isVertical ? rowArea / rect.width : rowArea / rect.height
-        
-        var worstRatio = 0.0
-        
-        for node in row {
-            let nodeArea = rowArea * CGFloat(node.totalSize) / CGFloat(rowSize)
-            let nodeLength = nodeArea / rowThickness
-            
-            let ratio = max(nodeLength / rowThickness, rowThickness / nodeLength)
-            worstRatio = max(worstRatio, Double(ratio))
-        }
-        
-        return worstRatio
-    }
-    
-    private func layoutRow(_ row: [TreeNode], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        let rowSize = row.reduce(0) { $0 + $1.totalSize }
-        guard rowSize > 0 else { return rectangles }
-        
-        let isVertical = rect.height > rect.width
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let rowRect: CGRect
-        if isVertical {
-            // 垂直布局：行占据顶部区域
-            let rowHeight = rowArea / rect.width
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rowHeight)
-        } else {
-            // 水平布局：行占据左侧区域
-            let rowWidth = rowArea / rect.height
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rowWidth, height: rect.height)
-        }
-        
-        // 在行内布局节点
-        var currentPos: CGFloat = isVertical ? rowRect.minX : rowRect.minY
-        
-        for node in row {
-            let nodeArea = rowArea * CGFloat(node.totalSize) / CGFloat(rowSize)
-            let nodeRect: CGRect
-            
-            if isVertical {
-                let nodeWidth = nodeArea / rowRect.height
-                nodeRect = CGRect(
-                    x: currentPos,
-                    y: rowRect.minY,
-                    width: nodeWidth,
-                    height: rowRect.height
-                )
-                currentPos += nodeWidth
-            } else {
-                let nodeHeight = nodeArea / rowRect.width
-                nodeRect = CGRect(
-                    x: rowRect.minX,
-                    y: currentPos,
-                    width: rowRect.width,
-                    height: nodeHeight
-                )
-                currentPos += nodeHeight
-            }
-            
-            // 递归计算子布局
-            let childRectangles = calculateLayoutRecursive(for: node, in: nodeRect, level: level)
-            rectangles.append(contentsOf: childRectangles)
-        }
-        
-        return rectangles
-    }
-    
-    private func getRemainingRect(from rect: CGRect, after row: [TreeNode], totalSize: Int64) -> CGRect {
-        let rowSize = row.reduce(0) { $0 + $1.totalSize }
-        guard totalSize > 0 else { return rect }
-        
-        let ratio = CGFloat(rowSize) / CGFloat(totalSize)
-        let isVertical = rect.height > rect.width
-        
-        if isVertical {
-            let usedHeight = rect.height * ratio
-            return CGRect(
-                x: rect.minX,
-                y: rect.minY + usedHeight,
-                width: rect.width,
-                height: rect.height - usedHeight
-            )
-        } else {
-            let usedWidth = rect.width * ratio
-            return CGRect(
-                x: rect.minX + usedWidth,
-                y: rect.minY,
-                width: rect.width - usedWidth,
-                height: rect.height
-            )
-        }
     }
     
     private func findMaxSize(in node: TreeNode) -> Int64 {
