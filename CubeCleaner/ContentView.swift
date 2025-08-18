@@ -94,7 +94,6 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: 400)
                     } else if !rectangles.isEmpty && !isResizing {
-                        // TreeMap 可视化 - 移除ScrollView，直接绘制
                         ZStack {
                             ForEach(rectangles) { rectangle in
                                 TreeMapRectangleView(rectangle: rectangle)
@@ -119,10 +118,6 @@ struct ContentView: View {
                                 .frame(width: 300)
 
                             VStack(spacing: 4) {
-                                Text("\(fileSystemService.filesScanned) 个文件已扫描")
-                                    .font(.body)
-                                    .foregroundColor(.secondary)
-
                                 Text(
                                     "总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))"
                                 )
@@ -158,7 +153,7 @@ struct ContentView: View {
                         VStack(spacing: 16) {
                             ProgressView()
                                 .scaleEffect(1.2)
-                            Text("重新计算布局中...")
+                            Text("计算布局中...")
                                 .font(.title3)
                                 .foregroundColor(.secondary)
                         }
@@ -177,15 +172,15 @@ struct ContentView: View {
                         await updateLayoutOptimized(size: geometry.size)
                     }
                 }
-            }
 
-            // 详情面板
-            if showingDetails {
-                DetailsPanelView(
-                    selectedNode: $selectedNode,
-                    showingDetails: $showingDetails,
-                    fileSystemService: fileSystemService
-                )
+                // 详情面板
+                if showingDetails {
+                    DetailsPanelView(
+                        selectedNode: $selectedNode,
+                        showingDetails: $showingDetails,
+                        fileSystemService: fileSystemService
+                    )
+                }
             }
 
             // 状态栏
@@ -500,8 +495,14 @@ struct DetailsPanelView: View {
             }
         }
         .padding()
-        .frame(width: 300)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .frame(maxWidth:500)
         .background(Color(NSColor.controlBackgroundColor))
+        .onTapGesture {
+            showingDetails = false
+            selectedNode = nil
+        }
     }
 }
 

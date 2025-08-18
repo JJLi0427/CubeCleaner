@@ -717,7 +717,7 @@ class BinaryTreeMapCalculator: ObservableObject {
         // 创建虚拟的FileSystemItem
         let totalSize = children.reduce(0) { $0 + $1.totalSize }
         let virtualItem = FileSystemItem(
-            name: "Virtual",
+            name: parent.item.name,
             path: parent.item.path,
             size: totalSize,
             isDirectory: true,
