@@ -17,6 +17,12 @@ struct ContentView: View {
     @State private var showingDetails = false
     @State private var showingFilePicker = false
 
+    // 性能优化相关状态
+    @State private var isResizing = false
+    @State private var layoutTask: Task<Void, Never>?
+    @State private var resizeTimer: Timer?
+    @State private var isLayouting = false
+
     var body: some View {
         VStack(spacing: 0) {
             // 工具栏
@@ -66,7 +72,9 @@ struct ContentView: View {
                 ZStack {
                     Color(.controlBackgroundColor)
 
-                    if rectangles.isEmpty && !fileSystemService.isScanning {
+                    if rectangles.isEmpty && !fileSystemService.isScanning && !isResizing
+                        && !isLayouting
+                    {
                         // 空状态界面
                         VStack(spacing: 16) {
                             Image(systemName: "folder.badge.questionmark")
@@ -83,32 +91,20 @@ struct ContentView: View {
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
                             }
-
-                            // Button("选择文件夹") {
-                            //     showingFilePicker = true
-                            // }
-                            // .buttonStyle(.borderedProminent)
-                            // .controlSize(.large)
                         }
                         .frame(maxWidth: 400)
-                    } else if !rectangles.isEmpty {
-                        // TreeMap 可视化
-                        ScrollView([.horizontal, .vertical]) {
-                            ZStack {
-                                ForEach(rectangles) { rectangle in
-                                    TreeMapRectangleView(rectangle: rectangle)
-                                        .onTapGesture {
-                                            selectedNode = rectangle.node
-                                            showingDetails = true
-                                        }
-                                }
+                    } else if !rectangles.isEmpty && !isResizing {
+                        // TreeMap 可视化 - 移除ScrollView，直接绘制
+                        ZStack {
+                            ForEach(rectangles) { rectangle in
+                                TreeMapRectangleView(rectangle: rectangle)
+                                    .onTapGesture {
+                                        selectedNode = rectangle.node
+                                        showingDetails = true
+                                    }
                             }
-                            .frame(
-                                width: max(geometry.size.width, 1000),
-                                height: max(geometry.size.height, 800)
-                            )
                         }
-                        .coordinateSpace(name: "scrollView")
+                        .clipped()  // 裁剪超出边界的内容
                     } else if fileSystemService.isScanning {
                         // 扫描状态
                         VStack(spacing: 16) {
@@ -147,16 +143,39 @@ struct ContentView: View {
                             }
                             .buttonStyle(.bordered)
                         }
+                    } else if isResizing {
+                        // 窗口大小调整时显示占位符
+                        VStack(spacing: 16) {
+                            Image(systemName: "rectangle.expand.vertical")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary)
+                            Text("调整窗口大小中...")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                        }
+                    } else if isLayouting {
+                        // 布局计算中显示加载状态
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                            Text("重新计算布局中...")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 .onAppear {
-                    updateLayout(size: geometry.size)
+                    Task {
+                        await updateLayoutOptimized(size: geometry.size)
+                    }
                 }
                 .onChange(of: geometry.size) { _, newSize in
-                    updateLayout(size: newSize)
+                    handleGeometryChange(newSize: newSize)
                 }
                 .onChange(of: fileSystemService.rootNode) { _, _ in
-                    updateLayout(size: geometry.size)
+                    Task {
+                        await updateLayoutOptimized(size: geometry.size)
+                    }
                 }
             }
 
@@ -212,14 +231,77 @@ struct ContentView: View {
         }
     }
 
-    private func updateLayout(size: CGSize) {
-        guard let rootNode = fileSystemService.rootNode, size.width > 0, size.height > 0 else {
+    // MARK: - 性能优化的布局更新方法
+
+    /**
+     * 处理窗口大小变化 - 实现resize时清除内容的逻辑
+     */
+    private func handleGeometryChange(newSize: CGSize) {
+        // 取消之前的任务
+        layoutTask?.cancel()
+        resizeTimer?.invalidate()
+
+        // 立即清除内容，显示resize状态
+        if !isResizing {
+            isResizing = true
+            rectangles = []  // 清除所有矩形
+        }
+
+        // 设置延迟重新计算，等待用户停止拖动
+        resizeTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
+            Task { @MainActor in
+                isResizing = false
+                await updateLayoutOptimized(size: newSize)
+            }
+        }
+    }
+
+    /**
+     * 优化的异步布局更新方法
+     */
+    private func updateLayoutOptimized(size: CGSize) async {
+        guard let rootNode = fileSystemService.rootNode,
+            size.width > 0,
+            size.height > 0
+        else {
             rectangles = []
             return
         }
 
-        let rect = CGRect(origin: .zero, size: size)
-        rectangles = layoutCalculator.calculateLayout(for: rootNode, in: rect)
+        // 取消之前的布局任务
+        layoutTask?.cancel()
+
+        // 显示布局计算状态
+        isLayouting = true
+
+        // 异步计算布局
+        layoutTask = Task { @MainActor in
+            // 在后台线程计算布局
+            let calculator = layoutCalculator
+            let newRectangles = await Task.detached { [rootNode] in
+                let rect = CGRect(origin: .zero, size: size)
+                return calculator.calculateLayout(for: rootNode, in: rect)
+            }.value
+
+            // 检查任务是否被取消
+            guard !Task.isCancelled else { return }
+
+            // 在主线程更新UI
+            withAnimation(.easeOut(duration: 0.25)) {
+                rectangles = newRectangles
+                isLayouting = false
+            }
+        }
+
+        // 等待布局任务完成
+        await layoutTask?.value
+    }
+
+    // 兼容旧接口的同步方法
+    private func updateLayout(size: CGSize) {
+        Task {
+            await updateLayoutOptimized(size: size)
+        }
     }
 }
 
