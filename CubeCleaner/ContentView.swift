@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var fileSystemService = FileSystemService()
-    @State private var layoutCalculator = TreeMapLayoutCalculator()
+    @State private var layoutCalculator = BinaryTreeMapCalculator()
     @State private var rectangles: [TreeMapRectangle] = []
     @State private var selectedPath: URL?
     @State private var hoveredNode: TreeNode?

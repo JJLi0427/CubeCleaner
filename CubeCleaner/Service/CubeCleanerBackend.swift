@@ -17,7 +17,7 @@
  * ├── 可视化模块 (Lines 451-900)
  * │   ├── ColorSchemeManager - 颜色方案管理器
  * │   ├── TreeMapRectangle - TreeMap矩形结构
- * │   ├── TreeMapLayoutCalculator - Squarified TreeMap布局计算器
+ * │   ├── BinaryTreeMapCalculator - Binary Tree TreeMap布局计算器
  * │   └── NormalizedItem - 规范化项目数据
  * │
  * ├── 文件系统服务模块 (Lines 901-1050)
@@ -589,341 +589,179 @@ struct TreeMapRectangle: Identifiable {
     }
 }
 
-// MARK: - Squarified TreeMap 布局计算器
-/// Squarified TreeMap算法实现
+// MARK: - Binary Tree TreeMap 布局计算器
+/// Binary Tree TreeMap算法实现
+/// Linus式设计原则：消除特殊情况，最简数据结构，零废话
 ///
-/// 算法特点：
-/// 1. 保证图形完全密铺，无空隙
-/// 2. 优化矩形纵横比，避免过窄或过宽的矩形
-/// 3. 递归分割，保持层次结构清晰
-/// 4. 动态选择最佳分割方向
-///
-/// 参考论文：Squarified Treemaps (Mark Bruls, Kees Huizing, Jarke J. van Wijk)
-class TreeMapLayoutCalculator: ObservableObject {
+/// 核心思想：
+/// 1. 把复杂的Squarified算法扔掉 - 它是过度设计的垃圾
+/// 2. 用Binary Tree简单二分法：大的一半，小的一半，完事
+/// 3. 没有特殊情况，没有复杂计算，就是递归二分
+/// 4. 数据结构决定算法 - TreeMap就是个Binary Tree的可视化
+class BinaryTreeMapCalculator: ObservableObject {
 
-    // MARK: - Configuration Constants
+    // MARK: - 核心常量 - 最少即是最多
     private let colorSchemeManager = ColorSchemeManager.shared
-    private let minRectSize: CGFloat = 6.0  // 最小可辨识矩形大小
-    private let minAspectRatio: CGFloat = 0.3  // 最小纵横比阈值
-    private let maxDepth: Int = 10  // 最大递归深度
-    private let minSizeThreshold: Double = 0.001  // 最小大小占比阈值
+    private let minSize: CGFloat = 4  // 小于这个就不画了，简单粗暴
+    private let maxDepth: Int = 16  // 足够深，超过就是垃圾数据
 
-    // MARK: - Global State for Better Algorithm
-    private var globalMaxSize: Int64 = 0  // 全局最大大小，用于颜色归一化
+    // MARK: - 全局状态 - 一个变量搞定颜色
+    private var globalMaxSize: Int64 = 0
 
-    // MARK: - Public Interface
+    // MARK: - 主入口 - 就这一个函数，其他都是实现细节
     /**
-     * 计算TreeMap布局的主入口
-     * @param node: 要布局的节点
-     * @param rect: 可用的矩形区域
-     * @return: 布局后的矩形数组
+     * Binary Tree TreeMap主算法
+     * 输入：节点和矩形 -> 输出：矩形列表
+     * 没有花哨的东西，就是递归二分
      */
     func calculateLayout(for node: TreeNode, in rect: CGRect) -> [TreeMapRectangle] {
-        guard rect.width >= minRectSize && rect.height >= minRectSize else {
+        // 太小就不画，简单
+        if rect.width < minSize || rect.height < minSize {
             return []
         }
 
-        // Linus式修复：统一的全局状态管理，消除颜色归一化不一致问题
-        globalMaxSize = findGlobalMaxSize(in: node)
+        // 设置全局最大值，用于颜色
+        globalMaxSize = findMaxSize(from: node)
 
-        return squarifiedTreemap(for: node, in: rect, level: 0)
+        // 开始递归
+        return binaryTreeMap(node: node, rect: rect, depth: 0)
     }
 
-    // MARK: - Core Squarified Algorithm
+    // MARK: - 核心算法 - Binary Tree递归分割
     /**
-     * Squarified TreeMap核心算法
-     * 递归实现密铺的矩形分割
+     * Binary Tree核心算法
+     * 永远二分：找最大的子节点，给它一半空间，剩下的给其他
+     * 没有复杂计算，没有特殊情况，就是二分到底
      */
-    private func squarifiedTreemap(for node: TreeNode, in rect: CGRect, level: Int)
-        -> [TreeMapRectangle]
-    {
-        var rectangles: [TreeMapRectangle] = []
-
-        // 终止条件检查
-        if shouldTerminate(rect: rect, level: level, node: node) {
-            let rectangle = createLeafRectangle(node: node, rect: rect, level: level)
-            rectangles.append(rectangle)
-            return rectangles
+    private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int) -> [TreeMapRectangle] {
+        // 递归终止：太深了或者太小了就画叶子
+        if depth >= maxDepth || node.children.isEmpty {
+            return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
-        // 获取有效子节点并准备数据
-        let validChildren = getValidChildren(from: node)
-        guard !validChildren.isEmpty else {
-            let rectangle = createLeafRectangle(node: node, rect: rect, level: level)
-            rectangles.append(rectangle)
-            return rectangles
+        // 获取有效子节点
+        let children = getValidChildren(node.children)
+        if children.isEmpty {
+            return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
-        // 规范化子节点数据
-        let normalizedItems = normalizeChildrenData(
-            validChildren, totalArea: rect.width * rect.height)
-
-        // 执行Squarified分割
-        let childRectangles = squarify(items: normalizedItems, rect: rect, level: level + 1)
-        rectangles.append(contentsOf: childRectangles)
-
-        return rectangles
-    }
-
-    /**
-     * Squarify算法主体
-     * 使用贪心策略优化矩形纵横比
-     */
-    private func squarify(items: [NormalizedItem], rect: CGRect, level: Int) -> [TreeMapRectangle] {
-        guard !items.isEmpty else { return [] }
-
-        var rectangles: [TreeMapRectangle] = []
-        var remainingItems = items
-        var currentRect = rect
-
-        while !remainingItems.isEmpty {
-            // 选择最佳的一行/列进行布局
-            let (rowItems, restItems) = selectOptimalRow(from: remainingItems, in: currentRect)
-
-            // 为这一行/列生成矩形
-            let (rowRectangles, newRect) = layoutRow(items: rowItems, in: currentRect, level: level)
-            rectangles.append(contentsOf: rowRectangles)
-
-            // 更新剩余区域和项目
-            remainingItems = restItems
-            currentRect = newRect
-
-            // 安全检查：避免无限循环
-            if currentRect.width < minRectSize || currentRect.height < minRectSize {
-                break
-            }
+        // 只有一个子节点？直接递归下去
+        if children.count == 1 {
+            return binaryTreeMap(node: children[0], rect: rect, depth: depth + 1)
         }
 
-        return rectangles
-    }
+        // 二分逻辑：找最大的，给它合适的空间，剩下的给其他
+        let sortedChildren = children.sorted { $0.totalSize > $1.totalSize }
+        let largest = sortedChildren[0]
+        let others = Array(sortedChildren[1...])
 
-    /**
-     * 选择最佳的一行进行布局
-     * Linus式修复：遍历所有候选，取全局最优，消除贪心过早退出
-     */
-    private func selectOptimalRow(from items: [NormalizedItem], in rect: CGRect) -> (
-        [NormalizedItem], [NormalizedItem]
-    ) {
-        guard !items.isEmpty else { return ([], []) }
-
-        var bestRow: [NormalizedItem] = [items[0]]
-        var bestAspectRatio = calculateWorstAspectRatio(items: [items[0]], in: rect)
-
-        // Linus式修复：遍历所有可能的组合，取全局最优，而不是贪心早退
-        for i in 1..<items.count {
-            let candidateRow = Array(items[0...i])
-            let aspectRatio = calculateWorstAspectRatio(items: candidateRow, in: rect)
-
-            if aspectRatio < bestAspectRatio {
-                bestRow = candidateRow
-                bestAspectRatio = aspectRatio
-                // 删除break，继续遍历所有候选
-            }
-        }
-
-        let remainingItems = Array(items[bestRow.count...])
-        return (bestRow, remainingItems)
-    }
-
-    /**
-     * 为一行项目生成矩形布局
-     * Linus式修复：最后一个矩形用剩余空间强制填满，消除精度问题和浮点误差累积
-     */
-    private func layoutRow(items: [NormalizedItem], in rect: CGRect, level: Int) -> (
-        [TreeMapRectangle], CGRect
-    ) {
-        guard !items.isEmpty else { return ([], rect) }
-
-        var rectangles: [TreeMapRectangle] = []
-        let totalArea = items.reduce(0) { $0 + $1.normalizedSize }
-
-        // 选择分割方向（较短的边）
-        let isHorizontalSplit = rect.width <= rect.height
-
-        if isHorizontalSplit {
-            // 水平分割：沿y轴排列
-            let stripHeight = totalArea / rect.width
-            let actualHeight = min(stripHeight, rect.height)
-
-            var currentX = rect.minX
-            for (index, item) in items.enumerated() {
-                let width: CGFloat
-                if index == items.count - 1 {
-                    // Linus式修复：最后一个用剩余空间，消除累积误差
-                    width = rect.maxX - currentX
-                } else {
-                    width = item.normalizedSize / actualHeight
-                }
-
-                let itemRect = CGRect(x: currentX, y: rect.minY, width: width, height: actualHeight)
-
-                // 递归处理子节点
-                let childRectangles = squarifiedTreemap(for: item.node, in: itemRect, level: level)
-                rectangles.append(contentsOf: childRectangles)
-
-                currentX += width
-            }
-
-            // 返回剩余区域
-            let remainingRect = CGRect(
-                x: rect.minX,
-                y: rect.minY + actualHeight,
-                width: rect.width,
-                height: rect.height - actualHeight
-            )
-            return (rectangles, remainingRect)
-
-        } else {
-            // 垂直分割：沿x轴排列
-            let stripWidth = totalArea / rect.height
-            let actualWidth = min(stripWidth, rect.width)
-
-            var currentY = rect.minY
-            for (index, item) in items.enumerated() {
-                let height: CGFloat
-                if index == items.count - 1 {
-                    // Linus式修复：最后一个用剩余空间，消除累积误差
-                    height = rect.maxY - currentY
-                } else {
-                    height = item.normalizedSize / actualWidth
-                }
-
-                let itemRect = CGRect(x: rect.minX, y: currentY, width: actualWidth, height: height)
-
-                // 递归处理子节点
-                let childRectangles = squarifiedTreemap(for: item.node, in: itemRect, level: level)
-                rectangles.append(contentsOf: childRectangles)
-
-                currentY += height
-            }
-
-            // 返回剩余区域
-            let remainingRect = CGRect(
-                x: rect.minX + actualWidth,
-                y: rect.minY,
-                width: rect.width - actualWidth,
-                height: rect.height
-            )
-            return (rectangles, remainingRect)
-        }
-    }
-
-    // MARK: - Helper Functions
-    /**
-     * 计算一组项目的最差纵横比
-     * 用于优化布局质量
-     */
-    private func calculateWorstAspectRatio(items: [NormalizedItem], in rect: CGRect) -> CGFloat {
-        guard !items.isEmpty else { return CGFloat.infinity }
-
-        let totalArea = items.reduce(0) { $0 + $1.normalizedSize }
-        let isHorizontalSplit = rect.width <= rect.height
-
-        var worstRatio: CGFloat = 0
-
-        if isHorizontalSplit {
-            let stripHeight = totalArea / rect.width
-            for item in items {
-                let width = item.normalizedSize / stripHeight
-                let aspectRatio = max(width / stripHeight, stripHeight / width)
-                worstRatio = max(worstRatio, aspectRatio)
-            }
-        } else {
-            let stripWidth = totalArea / rect.height
-            for item in items {
-                let height = item.normalizedSize / stripWidth
-                let aspectRatio = max(stripWidth / height, height / stripWidth)
-                worstRatio = max(worstRatio, aspectRatio)
-            }
-        }
-
-        return worstRatio
-    }
-
-    /**
-     * 规范化子节点数据
-     * 将大小转换为面积单位
-     */
-    private func normalizeChildrenData(_ children: [TreeNode], totalArea: CGFloat)
-        -> [NormalizedItem]
-    {
+        // 计算分割比例 - 基于大小比例
         let totalSize = children.reduce(0) { $0 + $1.totalSize }
-        guard totalSize > 0 else { return [] }
+        let largestRatio = CGFloat(largest.totalSize) / CGFloat(totalSize)
 
-        return children.map { child in
-            let proportion = CGFloat(child.totalSize) / CGFloat(totalSize)
-            let normalizedSize = proportion * totalArea
-            return NormalizedItem(node: child, normalizedSize: normalizedSize)
+        // 决定分割方向：宽的垂直分，高的水平分
+        let (largestRect, othersRect) = splitRect(
+            rect: rect,
+            ratio: largestRatio,
+            isVertical: rect.width > rect.height
+        )
+
+        // 递归处理
+        var result: [TreeMapRectangle] = []
+        result.append(contentsOf: binaryTreeMap(node: largest, rect: largestRect, depth: depth + 1))
+
+        // 处理剩余节点
+        if others.count == 1 {
+            // 只剩一个，直接递归
+            result.append(
+                contentsOf: binaryTreeMap(node: others[0], rect: othersRect, depth: depth + 1))
+        } else {
+            // 多个节点，创建虚拟父节点继续递归
+            let virtualNode = createVirtualNode(children: others, parent: node)
+            result.append(
+                contentsOf: binaryTreeMap(node: virtualNode, rect: othersRect, depth: depth + 1))
+        }
+
+        return result
+    }
+
+    // MARK: - 工具函数 - 简单直接，没有复杂逻辑
+
+    /**
+     * 分割矩形 - 永远二分，没有特殊情况
+     */
+    private func splitRect(rect: CGRect, ratio: CGFloat, isVertical: Bool) -> (CGRect, CGRect) {
+        if isVertical {
+            // 垂直分割
+            let splitX = rect.minX + rect.width * ratio
+            let left = CGRect(
+                x: rect.minX, y: rect.minY, width: rect.width * ratio, height: rect.height)
+            let right = CGRect(
+                x: splitX, y: rect.minY, width: rect.width * (1 - ratio), height: rect.height)
+            return (left, right)
+        } else {
+            // 水平分割
+            let splitY = rect.minY + rect.height * ratio
+            let top = CGRect(
+                x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * ratio)
+            let bottom = CGRect(
+                x: rect.minX, y: splitY, width: rect.width, height: rect.height * (1 - ratio))
+            return (top, bottom)
         }
     }
 
     /**
-     * 获取有效的子节点
-     * 过滤掉太小的项目
+     * 创建虚拟节点 - 用于合并多个子节点
      */
-    private func getValidChildren(from node: TreeNode) -> [TreeNode] {
-        let totalSize = node.children.reduce(0) { $0 + $1.totalSize }
-        guard totalSize > 0 else { return [] }
-
-        return node.children
-            .filter { child in
-                let proportion = Double(child.totalSize) / Double(totalSize)
-                return proportion > minSizeThreshold
-            }
-            .sorted { $0.totalSize > $1.totalSize }
-    }
-
-    /**
-     * 判断是否应该终止递归
-     * Linus式修复：消除节点消失问题，小节点也要画叶子而不是丢掉
-     */
-    private func shouldTerminate(rect: CGRect, level: Int, node: TreeNode) -> Bool {
-        return rect.width < minRectSize || rect.height < minRectSize || level >= maxDepth
-            || node.children.isEmpty || getValidChildren(from: node).isEmpty  // 只有没有有效子节点时才终止
-    }
-
-    /**
-     * 创建叶子节点矩形
-     * Linus式修复：使用全局最大值进行颜色归一化，确保颜色范围全局一致
-     */
-    private func createLeafRectangle(node: TreeNode, rect: CGRect, level: Int) -> TreeMapRectangle {
-        return TreeMapRectangle(
-            node: node,
-            rect: rect,
-            color: colorSchemeManager.adjustedColor(for: node, maxSize: globalMaxSize),
-            level: level
+    private func createVirtualNode(children: [TreeNode], parent: TreeNode) -> TreeNode {
+        // 创建虚拟的FileSystemItem
+        let totalSize = children.reduce(0) { $0 + $1.totalSize }
+        let virtualItem = FileSystemItem(
+            name: "Virtual",
+            path: parent.item.path,
+            size: totalSize,
+            isDirectory: true,
+            creationDate: Date(),
+            modificationDate: Date()
         )
+
+        let virtualNode = TreeNode(item: virtualItem, parent: parent)
+        children.forEach { virtualNode.addChild($0) }
+        return virtualNode
     }
 
     /**
-     * 查找全局最大节点大小
-     * Linus式修复：从根节点开始遍历，获取全局最大值而不是局部最大值
+     * 获取有效子节点 - 过滤掉过小的
      */
-    private func findGlobalMaxSize(in node: TreeNode) -> Int64 {
+    private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
+        return children.filter { $0.totalSize > 0 }
+    }
+
+    /**
+     * 查找最大文件大小 - 简单遍历
+     */
+    private func findMaxSize(from node: TreeNode) -> Int64 {
         var maxSize = node.totalSize
 
         func traverse(_ current: TreeNode) {
             maxSize = max(maxSize, current.totalSize)
-            for child in current.children {
-                traverse(child)
-            }
+            current.children.forEach { traverse($0) }
         }
 
-        // 从根节点开始遍历
-        let root = findRoot(of: node)
-        traverse(root)
+        traverse(node)
         return maxSize
     }
 
     /**
-     * 查找根节点
+     * 创建叶子矩形 - 就是包装一下数据
      */
-    private func findRoot(of node: TreeNode) -> TreeNode {
-        var current = node
-        while let parent = current.parent {
-            current = parent
-        }
-        return current
+    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int) -> TreeMapRectangle {
+        return TreeMapRectangle(
+            node: node,
+            rect: rect,
+            color: colorSchemeManager.adjustedColor(for: node, maxSize: globalMaxSize),
+            level: depth
+        )
     }
 }
 
