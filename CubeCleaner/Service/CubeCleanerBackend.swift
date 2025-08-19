@@ -600,10 +600,11 @@ struct TreeMapRectangle: Identifiable {
 /// 4. 数据结构决定算法 - TreeMap就是个Binary Tree的可视化
 class BinaryTreeMapCalculator: ObservableObject {
 
-    // MARK: - 核心常量 - 最少即是最多
+    // MARK: - 核心常量 - 实用主义优先
     private let colorSchemeManager = ColorSchemeManager.shared
-    private let minSize: CGFloat = 4  // 小于这个就不画了，简单粗暴
-    private let maxDepth: Int = 16  // 足够深，超过就是垃圾数据
+    private let minVisibleSize: CGFloat = 24  // 最小可见尺寸：24x24像素，用户能看清
+    private let maxDepth: Int = 8  // 限制递归深度，避免过度分割
+    private let minFileRatio: Double = 0.01  // 文件大小阈值：小于总大小1%的文件合并显示
 
     // MARK: - 全局状态 - 一个变量搞定颜色
     private var globalMaxSize: Int64 = 0
@@ -615,12 +616,12 @@ class BinaryTreeMapCalculator: ObservableObject {
      * 没有花哨的东西，就是递归二分
      */
     func calculateLayout(for node: TreeNode, in rect: CGRect) -> [TreeMapRectangle] {
-        // 太小就不画，简单
-        if rect.width < minSize || rect.height < minSize {
+        // 太小就不画，实用主义
+        if rect.width < minVisibleSize || rect.height < minVisibleSize {
             return []
         }
 
-        // 设置全局最大值，用于颜色
+        // 设置全局最大值，用于颜色和阈值计算
         globalMaxSize = findMaxSize(from: node)
 
         // 开始递归
@@ -629,60 +630,124 @@ class BinaryTreeMapCalculator: ObservableObject {
 
     // MARK: - 核心算法 - Binary Tree递归分割
     /**
-     * Binary Tree核心算法
-     * 永远二分：找最大的子节点，给它一半空间，剩下的给其他
-     * 没有复杂计算，没有特殊情况，就是二分到底
+     * Binary Tree核心算法 - 重新设计版本
+     *
+     * Linus式设计原则：
+     * 1. 消除虚拟节点 - 它们是过度设计的垃圾
+     * 2. 直接处理节点数组 - 简单粗暴有效
+     * 3. 没有特殊情况 - 递归到底
      */
     private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int) -> [TreeMapRectangle] {
-        // 递归终止：太深了或者太小了就画叶子
-        if depth >= maxDepth || node.children.isEmpty {
-            return [createLeafRectangle(node: node, rect: rect, depth: depth)]
-        }
-
         // 获取有效子节点
         let children = getValidChildren(node.children)
+
+        // 递归终止：没有子节点就画叶子
         if children.isEmpty {
             return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
-        // 只有一个子节点？直接递归下去
+        // 太深了，直接展平所有子节点
+        if depth >= maxDepth {
+            return flattenChildren(children, in: rect, depth: depth)
+        }
+
+        // 只有一个子节点？直接递归
         if children.count == 1 {
             return binaryTreeMap(node: children[0], rect: rect, depth: depth + 1)
         }
 
-        // 二分逻辑：找最大的，给它合适的空间，剩下的给其他
+        // 二分处理：直接分割节点数组，不需要虚拟节点
+        return binaryPartition(children: children, rect: rect, depth: depth)
+    }
+
+    /**
+     * 二分分割 - 不使用虚拟节点的简洁版本
+     */
+    private func binaryPartition(children: [TreeNode], rect: CGRect, depth: Int)
+        -> [TreeMapRectangle]
+    {
+        guard children.count >= 2 else {
+            // 应该不会到这里，但防御性编程
+            return children.flatMap { binaryTreeMap(node: $0, rect: rect, depth: depth + 1) }
+        }
+
+        // 按大小排序
         let sortedChildren = children.sorted { $0.totalSize > $1.totalSize }
-        let largest = sortedChildren[0]
-        let others = Array(sortedChildren[1...])
 
-        // 计算分割比例 - 基于大小比例
-        let totalSize = children.reduce(0) { $0 + $1.totalSize }
-        let largestRatio = CGFloat(largest.totalSize) / CGFloat(totalSize)
+        // 找到最佳分割点 - 不一定是1个vs其他，而是平衡的分割
+        let splitIndex = findBestSplitIndex(sortedChildren)
+        let leftGroup = Array(sortedChildren[0..<splitIndex])
+        let rightGroup = Array(sortedChildren[splitIndex...])
 
-        // 决定分割方向：宽的垂直分，高的水平分
-        let (largestRect, othersRect) = splitRect(
+        // 计算分组大小比例
+        let leftSize = leftGroup.reduce(0) { $0 + $1.totalSize }
+        let rightSize = rightGroup.reduce(0) { $0 + $1.totalSize }
+        let totalSize = leftSize + rightSize
+
+        guard totalSize > 0 else { return [] }
+
+        let leftRatio = CGFloat(leftSize) / CGFloat(totalSize)
+
+        // 分割矩形
+        let (leftRect, rightRect) = splitRect(
             rect: rect,
-            ratio: largestRatio,
+            ratio: leftRatio,
             isVertical: rect.width > rect.height
         )
 
-        // 递归处理
         var result: [TreeMapRectangle] = []
-        result.append(contentsOf: binaryTreeMap(node: largest, rect: largestRect, depth: depth + 1))
 
-        // 处理剩余节点
-        if others.count == 1 {
-            // 只剩一个，直接递归
-            result.append(
-                contentsOf: binaryTreeMap(node: others[0], rect: othersRect, depth: depth + 1))
-        } else {
-            // 多个节点，创建虚拟父节点继续递归
-            let virtualNode = createVirtualNode(children: others, parent: node)
-            result.append(
-                contentsOf: binaryTreeMap(node: virtualNode, rect: othersRect, depth: depth + 1))
-        }
+        // 递归处理左侧组
+        result.append(contentsOf: processGroup(leftGroup, in: leftRect, depth: depth + 1))
+
+        // 递归处理右侧组
+        result.append(contentsOf: processGroup(rightGroup, in: rightRect, depth: depth + 1))
 
         return result
+    }
+
+    /**
+     * 处理节点组 - 不创建虚拟节点
+     */
+    private func processGroup(_ nodes: [TreeNode], in rect: CGRect, depth: Int)
+        -> [TreeMapRectangle]
+    {
+        if nodes.count == 1 {
+            return binaryTreeMap(node: nodes[0], rect: rect, depth: depth)
+        } else {
+            return binaryPartition(children: nodes, rect: rect, depth: depth)
+        }
+    }
+
+    /**
+     * 找到最佳分割索引 - 尽量平衡两组
+     */
+    private func findBestSplitIndex(_ sortedChildren: [TreeNode]) -> Int {
+        guard sortedChildren.count > 1 else { return 1 }
+
+        let totalSize = sortedChildren.reduce(0) { $0 + $1.totalSize }
+        let targetSize = totalSize / 2
+
+        var currentSize: Int64 = 0
+        for (index, child) in sortedChildren.enumerated() {
+            currentSize += child.totalSize
+            if currentSize >= targetSize || index == sortedChildren.count - 1 {
+                return max(1, index + 1)  // 至少分割出1个
+            }
+        }
+
+        return sortedChildren.count / 2  // fallback
+    }
+
+    /**
+     * 展平处理 - 当递归太深时，简单排列所有子节点
+     */
+    private func flattenChildren(_ children: [TreeNode], in rect: CGRect, depth: Int)
+        -> [TreeMapRectangle]
+    {
+        return children.map { child in
+            createLeafRectangle(node: child, rect: rect, depth: depth)
+        }
     }
 
     // MARK: - 工具函数 - 简单直接，没有复杂逻辑
@@ -711,30 +776,43 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /**
-     * 创建虚拟节点 - 用于合并多个子节点
-     */
-    private func createVirtualNode(children: [TreeNode], parent: TreeNode) -> TreeNode {
-        // 创建虚拟的FileSystemItem
-        let totalSize = children.reduce(0) { $0 + $1.totalSize }
-        let virtualItem = FileSystemItem(
-            name: parent.item.name,
-            path: parent.item.path,
-            size: totalSize,
-            isDirectory: true,
-            creationDate: Date(),
-            modificationDate: Date()
-        )
-
-        let virtualNode = TreeNode(item: virtualItem, parent: parent)
-        children.forEach { virtualNode.addChild($0) }
-        return virtualNode
-    }
-
-    /**
-     * 获取有效子节点 - 过滤掉过小的
+     * 获取有效子节点 - 智能过滤策略
+     *
+     * 过滤规则：
+     * 1. 大小为0的节点（无意义）
+     * 2. 小于总大小1%的文件（太小了，合并处理）
+     * 3. 保留至少前10大的文件（避免全部被过滤）
      */
     private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
-        return children.filter { $0.totalSize > 0 }
+        // 基础过滤：移除空文件
+        let nonZeroChildren = children.filter { $0.totalSize > 0 }
+
+        guard !nonZeroChildren.isEmpty else { return [] }
+
+        // 如果子节点不多，直接返回
+        if nonZeroChildren.count <= 5 {
+            return nonZeroChildren
+        }
+
+        // 计算总大小
+        let totalSize = nonZeroChildren.reduce(0) { $0 + $1.totalSize }
+        let sizeThreshold = Int64(Double(totalSize) * minFileRatio)
+
+        // 按大小排序，保留重要文件
+        let sortedChildren = nonZeroChildren.sorted { $0.totalSize > $1.totalSize }
+
+        // 保留策略：
+        // 1. 前10大文件无条件保留
+        // 2. 其他文件必须超过阈值
+        var result: [TreeNode] = []
+
+        for (index, child) in sortedChildren.enumerated() {
+            if index < 10 || child.totalSize >= sizeThreshold {
+                result.append(child)
+            }
+        }
+
+        return result.isEmpty ? [sortedChildren[0]] : result
     }
 
     /**
@@ -763,16 +841,6 @@ class BinaryTreeMapCalculator: ObservableObject {
             level: depth
         )
     }
-}
-
-// MARK: NormalizedItem - 规范化数据结构
-/// 规范化的项目数据
-/// 用于Squarified算法的中间计算
-///
-/// 将文件大小转换为屏幕面积单位，便于布局计算
-private struct NormalizedItem {
-    let node: TreeNode
-    let normalizedSize: CGFloat
 }
 
 // MARK: - 文件系统服务模块
