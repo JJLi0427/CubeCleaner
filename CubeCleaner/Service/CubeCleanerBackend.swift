@@ -741,13 +741,75 @@ class BinaryTreeMapCalculator: ObservableObject {
 
     /**
      * 展平处理 - 当递归太深时，简单排列所有子节点
+     * 修复：正确布局子节点，而不是重叠在同一位置
      */
     private func flattenChildren(_ children: [TreeNode], in rect: CGRect, depth: Int)
         -> [TreeMapRectangle]
     {
-        return children.map { child in
-            createLeafRectangle(node: child, rect: rect, depth: depth)
+        guard !children.isEmpty else { return [] }
+
+        // 如果只有一个子节点，占据整个区域
+        if children.count == 1 {
+            return [createLeafRectangle(node: children[0], rect: rect, depth: depth)]
         }
+
+        // 按大小排序
+        let sortedChildren = children.sorted { $0.totalSize > $1.totalSize }
+        let totalSize = sortedChildren.reduce(0) { $0 + $1.totalSize }
+
+        guard totalSize > 0 else { return [] }
+
+        var result: [TreeMapRectangle] = []
+        var currentRect = rect
+
+        // 简单的线性布局
+        let isVertical = rect.width > rect.height
+
+        for (index, child) in sortedChildren.enumerated() {
+            let ratio = CGFloat(child.totalSize) / CGFloat(totalSize)
+
+            if index == sortedChildren.count - 1 {
+                // 最后一个子节点占据剩余空间
+                result.append(createLeafRectangle(node: child, rect: currentRect, depth: depth))
+            } else {
+                let childRect: CGRect
+                if isVertical {
+                    // 垂直分割
+                    let width = currentRect.width * ratio
+                    childRect = CGRect(
+                        x: currentRect.minX,
+                        y: currentRect.minY,
+                        width: width,
+                        height: currentRect.height
+                    )
+                    currentRect = CGRect(
+                        x: currentRect.minX + width,
+                        y: currentRect.minY,
+                        width: currentRect.width - width,
+                        height: currentRect.height
+                    )
+                } else {
+                    // 水平分割
+                    let height = currentRect.height * ratio
+                    childRect = CGRect(
+                        x: currentRect.minX,
+                        y: currentRect.minY,
+                        width: currentRect.width,
+                        height: height
+                    )
+                    currentRect = CGRect(
+                        x: currentRect.minX,
+                        y: currentRect.minY + height,
+                        width: currentRect.width,
+                        height: currentRect.height - height
+                    )
+                }
+
+                result.append(createLeafRectangle(node: child, rect: childRect, depth: depth))
+            }
+        }
+
+        return result
     }
 
     // MARK: - 工具函数 - 简单直接，没有复杂逻辑

@@ -94,16 +94,21 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: 400)
                     } else if !rectangles.isEmpty && !isResizing {
-                        ZStack {
-                            ForEach(rectangles) { rectangle in
-                                TreeMapRectangleView(rectangle: rectangle)
-                                    .onTapGesture {
-                                        selectedNode = rectangle.node
-                                        showingDetails = true
-                                    }
+                        // TreeMap可视化 - 使用Canvas避免层级问题
+                        TreeMapCanvasView(
+                            rectangles: rectangles,
+                            onTap: { rectangle in
+                                selectedNode = rectangle.node
+                                showingDetails = true
+                            },
+                            onLongPress: { rectangle in
+                                NSWorkspace.shared.selectFile(
+                                    rectangle.node.item.path.path,
+                                    inFileViewerRootedAtPath: ""
+                                )
                             }
-                        }
-                        .clipped()  // 裁剪超出边界的内容
+                        )
+                        .clipped()
                     } else if fileSystemService.isScanning {
                         // 扫描状态
                         VStack(spacing: 16) {
@@ -300,88 +305,210 @@ struct ContentView: View {
     }
 }
 
+// MARK: - TreeMap Canvas View (无层级问题的解决方案)
+struct TreeMapCanvasView: View {
+    let rectangles: [TreeMapRectangle]
+    let onTap: (TreeMapRectangle) -> Void
+    let onLongPress: (TreeMapRectangle) -> Void
+
+    @State private var hoveredRectangle: TreeMapRectangle?
+
+    var body: some View {
+        Canvas { context, size in
+            // 绘制所有矩形 - 一次性完成，没有层级问题
+            for rectangle in rectangles {
+                drawRectangle(context: context, rectangle: rectangle)
+            }
+        }
+        .gesture(
+            // 统一的点击手势处理 - 手动计算点击位置
+            DragGesture(minimumDistance: 0)
+                .onEnded { value in
+                    let location = value.location
+                    if let hitRectangle = findRectangleAt(location) {
+                        onTap(hitRectangle)
+                    }
+                }
+        )
+        .gesture(
+            // 长按手势
+            LongPressGesture(minimumDuration: 0.5)
+                .sequenced(before: DragGesture(minimumDistance: 0))
+                .onEnded { value in
+                    switch value {
+                    case .second(true, let drag):
+                        if let location = drag?.location {
+                            if let hitRectangle = findRectangleAt(location) {
+                                onLongPress(hitRectangle)
+                            }
+                        }
+                    default:
+                        break
+                    }
+                }
+        )
+        .onHover { _ in }  // 保持悬停检测接口
+    }
+
+    /**
+     * 绘制单个矩形 - 直接Canvas绘制，无视图层级
+     */
+    private func drawRectangle(context: GraphicsContext, rectangle: TreeMapRectangle) {
+        let rect = rectangle.rect
+        let isHovered = hoveredRectangle?.id == rectangle.id
+
+        // 绘制背景
+        context.fill(
+            Path(rect),
+            with: .color(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
+        )
+
+        // 绘制边框
+        context.stroke(
+            Path(rect),
+            with: .color(rectangle.isImportant ? .primary.opacity(0.4) : .primary.opacity(0.2)),
+            lineWidth: rectangle.isImportant ? 1.5 : 0.5
+        )
+
+        // 绘制文本 - 如果矩形足够大
+        if rectangle.shouldShowLabel && !rectangle.displayName.isEmpty {
+            let textRect = CGRect(
+                x: rect.minX + 4,
+                y: rect.minY + 4,
+                width: rect.width - 8,
+                height: rect.height - 8
+            )
+
+            if textRect.width > 0 && textRect.height > 0 {
+                context.draw(
+                    Text(rectangle.displayName)
+                        .font(.system(size: min(11, rect.height / 4)))
+                        .fontWeight(rectangle.isImportant ? .semibold : .medium)
+                        .foregroundColor(.primary),
+                    in: textRect
+                )
+
+                // 绘制大小信息
+                if rectangle.canShowSize {
+                    let sizeRect = CGRect(
+                        x: rect.minX + 4,
+                        y: rect.minY + rect.height / 4 + 8,
+                        width: rect.width - 8,
+                        height: rect.height / 6
+                    )
+
+                    if sizeRect.height > 0 {
+                        context.draw(
+                            Text(rectangle.formattedSize)
+                                .font(.system(size: min(9, rect.height / 6)))
+                                .foregroundColor(.secondary),
+                            in: sizeRect
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 点击位置检测 - 手动计算哪个矩形被点击
+     * 这样就完全避免了视图层级问题
+     */
+    private func findRectangleAt(_ location: CGPoint) -> TreeMapRectangle? {
+        // 从后往前遍历，模拟视觉上的"最上层"
+        // 但实际上没有层级，只是逻辑上的优先级
+        for rectangle in rectangles.reversed() {
+            if rectangle.rect.contains(location) {
+                return rectangle
+            }
+        }
+        return nil
+    }
+}
+
 struct TreeMapRectangleView: View {
     let rectangle: TreeMapRectangle
+    let onTap: () -> Void
     @State private var isHovered = false
 
     var body: some View {
-        ZStack {
-            // 背景矩形
-            Rectangle()
-                .fill(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
-                .stroke(
-                    rectangle.isImportant ? Color.primary.opacity(0.4) : Color.primary.opacity(0.2),
-                    lineWidth: rectangle.isImportant ? 1.5 : 0.5
-                )
-                .shadow(
-                    color: .black.opacity(isHovered ? 0.3 : 0.1),
-                    radius: isHovered ? 3 : 1
-                )
-
-            // 内容标签
-            if rectangle.shouldShowLabel {
-                VStack(spacing: 2) {
-                    // 文件/文件夹名称
-                    if !rectangle.displayName.isEmpty {
-                        Text(rectangle.displayName)
-                            .font(.system(size: min(11, rectangle.rect.height / 4)))
-                            .fontWeight(rectangle.isImportant ? .semibold : .medium)
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    // 大小信息
-                    if rectangle.canShowSize {
-                        Text(rectangle.formattedSize)
-                            .font(.system(size: min(9, rectangle.rect.height / 6)))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    // 详细信息（文件夹子项数量）
-                    if rectangle.canShowDetails && rectangle.node.item.isDirectory {
-                        Text(rectangle.childrenDescription)
-                            .font(.system(size: min(8, rectangle.rect.height / 8)))
-                            .foregroundColor(.secondary.opacity(0.8))
-                            .lineLimit(1)
-                    }
-                }
-                .padding(2)
-                .frame(maxWidth: rectangle.rect.width - 4, maxHeight: rectangle.rect.height - 4)
-            }
-
-            // 文件类型图标（仅对重要文件显示）
-            if rectangle.isImportant && !rectangle.node.item.isDirectory
-                && rectangle.rect.width > 30 && rectangle.rect.height > 30
-            {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Image(systemName: iconForFileType(rectangle.node.item.fileExtension))
-                            .font(.system(size: min(12, rectangle.rect.width / 8)))
-                            .foregroundColor(.primary.opacity(0.6))
-                    }
-                    Spacer()
-                }
-                .padding(4)
-            }
-        }
-        .frame(width: rectangle.rect.width, height: rectangle.rect.height)
-        .position(x: rectangle.rect.midX, y: rectangle.rect.midY)
-        .onTapGesture {
-            // 点击打开文件或文件夹
-            NSWorkspace.shared.selectFile(
-                rectangle.node.item.path.path,
-                inFileViewerRootedAtPath: ""
+        Rectangle()
+            .fill(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
+            .stroke(
+                rectangle.isImportant ? Color.primary.opacity(0.4) : Color.primary.opacity(0.2),
+                lineWidth: rectangle.isImportant ? 1.5 : 0.5
             )
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovered = hovering
+            .shadow(
+                color: .black.opacity(isHovered ? 0.3 : 0.1),
+                radius: isHovered ? 3 : 1
+            )
+            .overlay {
+                // 内容标签
+                if rectangle.shouldShowLabel {
+                    VStack(spacing: 2) {
+                        // 文件/文件夹名称
+                        if !rectangle.displayName.isEmpty {
+                            Text(rectangle.displayName)
+                                .font(.system(size: min(11, rectangle.rect.height / 4)))
+                                .fontWeight(rectangle.isImportant ? .semibold : .medium)
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .multilineTextAlignment(.center)
+                        }
+
+                        // 大小信息
+                        if rectangle.canShowSize {
+                            Text(rectangle.formattedSize)
+                                .font(.system(size: min(9, rectangle.rect.height / 6)))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        // 详细信息（文件夹子项数量）
+                        if rectangle.canShowDetails && rectangle.node.item.isDirectory {
+                            Text(rectangle.childrenDescription)
+                                .font(.system(size: min(8, rectangle.rect.height / 8)))
+                                .foregroundColor(.secondary.opacity(0.8))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(2)
+                    .frame(maxWidth: rectangle.rect.width - 4, maxHeight: rectangle.rect.height - 4)
+                }
             }
-        }
-        .help(makeTooltipText())
+            .overlay(alignment: .topTrailing) {
+                // 文件类型图标（仅对重要文件显示）
+                if rectangle.isImportant && !rectangle.node.item.isDirectory
+                    && rectangle.rect.width > 30 && rectangle.rect.height > 30
+                {
+                    Image(systemName: iconForFileType(rectangle.node.item.fileExtension))
+                        .font(.system(size: min(12, rectangle.rect.width / 8)))
+                        .foregroundColor(.primary.opacity(0.6))
+                        .padding(4)
+                }
+            }
+            .frame(width: rectangle.rect.width, height: rectangle.rect.height)
+            .position(
+                x: rectangle.rect.minX + rectangle.rect.width / 2,
+                y: rectangle.rect.minY + rectangle.rect.height / 2
+            )
+            .contentShape(Rectangle())  // 确保整个矩形区域都可点击
+            .onTapGesture {
+                onTap()
+            }
+            .onLongPressGesture {
+                // 长按打开文件或文件夹
+                NSWorkspace.shared.selectFile(
+                    rectangle.node.item.path.path,
+                    inFileViewerRootedAtPath: ""
+                )
+            }
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isHovered = hovering
+                }
+            }
+            .help(makeTooltipText())
     }
 
     /**
@@ -497,7 +624,7 @@ struct DetailsPanelView: View {
         .padding()
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-        .frame(maxWidth:500)
+        .frame(maxWidth: 500)
         .background(Color(NSColor.controlBackgroundColor))
         .onTapGesture {
             showingDetails = false
