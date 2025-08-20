@@ -1,0 +1,15 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check CI status
+      run: |
+        echo "This job ensures PR checks are required for merging"
+        echo "Configure branch protection rules in GitHub to require this check"

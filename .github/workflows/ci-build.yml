@@ -1,0 +1,87 @@
+name: CI Build
+
+on:
+  push:
+    branches: [ main, ljj/dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode version
+      run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      
+    - name: Show Xcode version
+      run: xcodebuild -version
+      
+    - name: Clean build cache
+      run: |
+        rm -rf ~/Library/Developer/Xcode/DerivedData/CubeCleaner-*
+        rm -rf build
+        mkdir -p build
+      
+    - name: Build project (Debug)
+      run: |
+        xcodebuild \
+          -project CubeCleaner.xcodeproj \
+          -scheme CubeCleaner \
+          -configuration Debug \
+          -derivedDataPath build/DerivedData \
+          build
+      
+    - name: Find and archive app
+      run: |
+        APP_PATH=$(find build/DerivedData/Build/Products/Debug -name "*.app" -type d | head -1)
+        if [ -n "$APP_PATH" ]; then
+          echo "Found app at: $APP_PATH"
+          echo "$APP_PATH" > build/app_path.txt
+          # 创建应用程序的归档
+          tar -czf CubeCleaner-Debug.tar.gz -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+        else
+          echo "App not found!"
+          exit 1
+        fi
+      
+    - name: Upload app artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: CubeCleaner-Debug-${{ github.sha }}
+        path: CubeCleaner-Debug.tar.gz
+        retention-days: 30
+        
+    - name: Build project (Release)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        xcodebuild \
+          -project CubeCleaner.xcodeproj \
+          -scheme CubeCleaner \
+          -configuration Release \
+          -derivedDataPath build/DerivedData-Release \
+          build
+      
+    - name: Find and archive release app
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        APP_PATH=$(find build/DerivedData-Release/Build/Products/Release -name "*.app" -type d | head -1)
+        if [ -n "$APP_PATH" ]; then
+          echo "Found release app at: $APP_PATH"
+          # 创建Release版本的归档
+          tar -czf CubeCleaner-Release.tar.gz -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+        else
+          echo "Release app not found!"
+          exit 1
+        fi
+      
+    - name: Upload release app artifact
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v4
+      with:
+        name: CubeCleaner-Release-${{ github.sha }}
+        path: CubeCleaner-Release.tar.gz
+        retention-days: 90
