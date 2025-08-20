@@ -1,13 +1,42 @@
-import Foundation
+/**
+ * CubeCleanerBackend.swift
+ *
+ * CubeCleaner文件系统分析后端服务
+ *
+ * 文件结构说明：
+ * ├── 文件扫描模块 (Lines 1-350)
+ * │   ├── BulkFileAttributes - 批量文件属性结构
+ * │   ├── BulkFileScanner - 高性能批量文件扫描器
+ * │   └── 相关工具函数
+ * │
+ * ├── 数据模型模块 (Lines 351-450)
+ * │   ├── FileSystemItem - 文件系统项目数据模型
+ * │   ├── TreeNode - 树节点模型
+ * │   └── FileType - 文件类型枚举
+ * │
+ * ├── 可视化模块 (Lines 451-900)
+ * │   ├── ColorSchemeManager - 颜色方案管理器
+ * │   ├── TreeMapRectangle - TreeMap矩形结构
+ * │   ├── BinaryTreeMapCalculator - Binary Tree TreeMap布局计算器
+ * │   └── NormalizedItem - 规范化项目数据
+ * │
+ * ├── 文件系统服务模块 (Lines 901-1050)
+ * │   ├── FileSystemService - 主要的文件系统扫描服务
+ * │   └── 相关扫描和处理方法
+ * │
+ * └── 工具模块 (Lines 1051-END)
+ *     ├── FileSystemError - 错误类型定义
+ *     └── Array扩展 - 数组分块处理
+ */
+
 import Combine
-import SwiftUI
 import Darwin
+import Foundation
+import SwiftUI
 
 // MARK: - 批量文件属性结构
-/**
- * 用于getattrlistbulk批量获取文件属性的结构体
- * 这个结构体包含了文件扫描需要的所有关键属性，优化内存使用
- */
+/// 用于getattrlistbulk批量获取文件属性的结构体
+/// 这个结构体包含了文件扫描需要的所有关键属性，优化内存使用
 struct BulkFileAttributes {
     let name: String
     let size: Int64
@@ -18,24 +47,22 @@ struct BulkFileAttributes {
 }
 
 // MARK: - 批量文件扫描器
-/**
- * 使用getattrlistbulk API进行高效文件扫描的类
- * 相比传统的逐个文件扫描，批量API可以显著提升性能
- * 
- * 性能优势：
- * - 减少系统调用次数：一次调用获取多个文件属性
- * - 降低上下文切换开销：批量处理减少内核态/用户态切换
- * - 优化内存使用：使用固定大小缓冲区，避免内存碎片
- * - 提升缓存命中率：连续读取文件属性，提高磁盘缓存效率
- */
+/// 使用getattrlistbulk API进行高效文件扫描的类
+/// 相比传统的逐个文件扫描，批量API可以显著提升性能
+///
+/// 性能优势：
+/// - 减少系统调用次数：一次调用获取多个文件属性
+/// - 降低上下文切换开销：批量处理减少内核态/用户态切换
+/// - 优化内存使用：使用固定大小缓冲区，避免内存碎片
+/// - 提升缓存命中率：连续读取文件属性，提高磁盘缓存效率
 class BulkFileScanner {
-    
+
     // 批量处理的文件数量，平衡内存使用和性能
     private static let batchSize: Int = 512
-    
+
     // 缓冲区大小：64KB，优化内存使用和IO性能
     private static let bufferSize: Int = 64 * 1024
-    
+
     /**
      * 使用getattrlistbulk批量扫描目录内容
      * @param directoryPath: 要扫描的目录路径
@@ -48,54 +75,53 @@ class BulkFileScanner {
             throw POSIXError(.EACCES)
         }
         defer { close(dirFD) }
-        
+
         // 设置要获取的属性列表
         var attrList = attrlist()
         attrList.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
-        
+
         // 文件系统属性
-        attrList.commonattr = UInt32(ATTR_CMN_NAME |
-                                   ATTR_CMN_OBJTYPE |
-                                   ATTR_CMN_CRTIME |
-                                   ATTR_CMN_MODTIME)
-        
+        attrList.commonattr = UInt32(
+            ATTR_CMN_NAME | ATTR_CMN_OBJTYPE | ATTR_CMN_CRTIME | ATTR_CMN_MODTIME)
+
         // 文件属性
         attrList.fileattr = UInt32(ATTR_FILE_DATALENGTH)
-        
+
         var fileAttributes: [BulkFileAttributes] = []
-        var buffer = [UInt8](repeating: 0, count: bufferSize) // 使用预定义的缓冲区大小
-        
+        var buffer = [UInt8](repeating: 0, count: bufferSize)  // 使用预定义的缓冲区大小
+
         while true {
             // 调用getattrlistbulk获取批量文件属性
             let count = buffer.withUnsafeMutableBytes { bufferPtr in
                 getattrlistbulk(dirFD, &attrList, bufferPtr.baseAddress, bufferPtr.count, 0)
             }
-            
+
             if count == 0 {
-                break // 没有更多文件
+                break  // 没有更多文件
             }
-            
+
             if count < 0 {
                 let error = errno
                 if error == ENOENT || error == ENOTDIR {
-                    break // 目录不存在或不是目录，正常结束
+                    break  // 目录不存在或不是目录，正常结束
                 }
                 throw POSIXError(POSIXErrorCode(rawValue: error) ?? .EACCES)
             }
-            
+
             // 解析缓冲区中的属性数据
-            let parsedFiles = try parseAttributeBuffer(buffer, count: Int(count), basePath: directoryPath)
+            let parsedFiles = try parseAttributeBuffer(
+                buffer, count: Int(count), basePath: directoryPath)
             fileAttributes.append(contentsOf: parsedFiles)
-            
+
             // 如果返回的文件数少于期望，说明已经读完
             if count < batchSize {
                 break
             }
         }
-        
+
         return fileAttributes
     }
-    
+
     /**
      * 解析getattrlistbulk返回的属性缓冲区
      * @param buffer: 包含属性数据的缓冲区
@@ -103,22 +129,24 @@ class BulkFileScanner {
      * @param basePath: 基础路径
      * @returns: 解析后的文件属性数组
      */
-    private static func parseAttributeBuffer(_ buffer: [UInt8], count: Int, basePath: String) throws -> [BulkFileAttributes] {
+    private static func parseAttributeBuffer(_ buffer: [UInt8], count: Int, basePath: String) throws
+        -> [BulkFileAttributes]
+    {
         var fileAttributes: [BulkFileAttributes] = []
         var offset = 0
-        
+
         for _ in 0..<count {
             guard offset < buffer.count else { break }
-            
+
             // 读取当前条目的长度
             let entryLength = buffer.withUnsafeBytes { bytes in
                 bytes.load(fromByteOffset: offset, as: UInt32.self)
             }
-            
+
             guard offset + Int(entryLength) <= buffer.count else { break }
-            
+
             let entryData = Array(buffer[offset..<offset + Int(entryLength)])
-            
+
             do {
                 let attributes = try parseFileAttributes(from: entryData, basePath: basePath)
                 fileAttributes.append(attributes)
@@ -126,93 +154,99 @@ class BulkFileScanner {
                 // 跳过解析失败的条目，继续处理下一个
                 print("跳过解析失败的文件条目: \(error)")
             }
-            
+
             offset += Int(entryLength)
         }
-        
+
         return fileAttributes
     }
-    
+
     /**
      * 从单个文件的属性数据中解析文件信息
      * @param data: 文件属性数据
      * @param basePath: 基础路径
      * @returns: 解析后的文件属性
      */
-    private static func parseFileAttributes(from data: [UInt8], basePath: String) throws -> BulkFileAttributes {
-        var offset = 4 // 跳过长度字段
-        
+    private static func parseFileAttributes(from data: [UInt8], basePath: String) throws
+        -> BulkFileAttributes
+    {
+        var offset = 4  // 跳过长度字段
+
         // 读取文件名
         guard offset + 4 <= data.count else {
             throw FileSystemError.invalidPath
         }
-        
+
         let nameInfo = data.withUnsafeBytes { bytes in
             bytes.load(fromByteOffset: offset, as: attrreference.self)
         }
         offset += MemoryLayout<attrreference>.size
-        
+
         let nameOffset = Int(nameInfo.attr_dataoffset)
         let nameLength = Int(nameInfo.attr_length)
-        
+
         guard nameOffset + nameLength <= data.count else {
             throw FileSystemError.invalidPath
         }
-        
+
         let nameData = Array(data[nameOffset..<nameOffset + nameLength])
-        let fileName = String(cString: nameData) // C字符串以null结尾
-        
+        let fileName = String(cString: nameData)  // C字符串以null结尾
+
         // 读取文件类型
         guard offset + 4 <= data.count else {
             throw FileSystemError.invalidPath
         }
-        
+
         let objType = data.withUnsafeBytes { bytes in
             bytes.load(fromByteOffset: offset, as: UInt32.self)
         }
         offset += 4
-        
+
         let isDirectory = (objType == VDIR.rawValue)
-        
+
         // 读取创建时间
         guard offset + MemoryLayout<timespec>.size <= data.count else {
             throw FileSystemError.invalidPath
         }
-        
+
         let creationTime = data.withUnsafeBytes { bytes in
             bytes.load(fromByteOffset: offset, as: timespec.self)
         }
         offset += MemoryLayout<timespec>.size
-        
+
         // 读取修改时间
         guard offset + MemoryLayout<timespec>.size <= data.count else {
             throw FileSystemError.invalidPath
         }
-        
+
         let modificationTime = data.withUnsafeBytes { bytes in
             bytes.load(fromByteOffset: offset, as: timespec.self)
         }
         offset += MemoryLayout<timespec>.size
-        
+
         // 读取文件大小（仅对普通文件有效）
         var fileSize: Int64 = 0
         if !isDirectory {
             guard offset + 8 <= data.count else {
                 throw FileSystemError.invalidPath
             }
-            
+
             fileSize = data.withUnsafeBytes { bytes in
                 bytes.load(fromByteOffset: offset, as: Int64.self)
             }
         }
-        
+
         // 构造完整路径
         let fullPath = (basePath as NSString).appendingPathComponent(fileName)
-        
+
         // 转换时间戳为Date对象
-        let creationDate = Date(timeIntervalSince1970: Double(creationTime.tv_sec) + Double(creationTime.tv_nsec) / 1_000_000_000)
-        let modificationDate = Date(timeIntervalSince1970: Double(modificationTime.tv_sec) + Double(modificationTime.tv_nsec) / 1_000_000_000)
-        
+        let creationDate = Date(
+            timeIntervalSince1970: Double(creationTime.tv_sec) + Double(creationTime.tv_nsec)
+                / 1_000_000_000)
+        let modificationDate = Date(
+            timeIntervalSince1970: Double(modificationTime.tv_sec) + Double(
+                modificationTime.tv_nsec) / 1_000_000_000)
+
         return BulkFileAttributes(
             name: fileName,
             size: fileSize,
@@ -224,7 +258,15 @@ class BulkFileScanner {
     }
 }
 
-// MARK: - 文件系统项目数据模型
+// MARK: - 数据模型模块
+// MARK: FileSystemItem - 文件系统项目数据模型
+/// 文件系统项目的标准化数据结构
+/// 包含文件/文件夹的基本属性和元数据
+///
+/// 特性：
+/// - Identifiable: 支持SwiftUI列表显示
+/// - Codable: 支持序列化存储
+/// - Hashable: 支持集合操作
 struct FileSystemItem: Identifiable, Codable, Hashable {
     let id: UUID
     let name: String
@@ -233,8 +275,11 @@ struct FileSystemItem: Identifiable, Codable, Hashable {
     let isDirectory: Bool
     let creationDate: Date
     let modificationDate: Date
-    
-    init(name: String, path: URL, size: Int64, isDirectory: Bool, creationDate: Date, modificationDate: Date) {
+
+    init(
+        name: String, path: URL, size: Int64, isDirectory: Bool, creationDate: Date,
+        modificationDate: Date
+    ) {
         self.id = UUID()
         self.name = name
         self.path = path
@@ -243,68 +288,96 @@ struct FileSystemItem: Identifiable, Codable, Hashable {
         self.creationDate = creationDate
         self.modificationDate = modificationDate
     }
-    
+
+    /// 格式化的文件大小字符串
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
     }
-    
+
+    /// 是否为隐藏文件/文件夹
     var isHidden: Bool {
         name.hasPrefix(".")
     }
-    
+
+    /// 文件扩展名（小写）
     var fileExtension: String {
         path.pathExtension.lowercased()
     }
 }
 
-// MARK: - 树节点模型
+// MARK: TreeNode - 树形结构节点模型
+/// 文件系统的树形结构节点
+/// 支持递归遍历和层次化显示
+///
+/// 特性：
+/// - ObservableObject: 支持SwiftUI数据绑定
+/// - 父子关系维护
+/// - 展开/折叠状态管理
+/// - 递归大小计算
 class TreeNode: ObservableObject, Identifiable, Equatable {
     let id = UUID()
     let item: FileSystemItem
     let parent: TreeNode?
     @Published var children: [TreeNode] = []
     @Published var isExpanded: Bool = false
-    
+
+    /// 节点在树中的层级深度
     var level: Int {
         (parent?.level ?? -1) + 1
     }
-    
+
+    /// 递归计算总大小（包含所有子项）
     var totalSize: Int64 {
         if item.isDirectory {
-            // 目录的总大小只计算非0字节的子文件
-            return children.reduce(0) { $0 + $1.totalSize }
+            return children.reduce(item.size) { $0 + $1.totalSize }
         }
         return item.size
     }
-    
+
     init(item: FileSystemItem, parent: TreeNode? = nil) {
         self.item = item
         self.parent = parent
     }
-    
+
+    /// 添加子节点
     func addChild(_ child: TreeNode) {
         children.append(child)
     }
-    
+
+    /// 移除子节点
     func removeChild(_ child: TreeNode) {
         children.removeAll { $0.id == child.id }
     }
-    
+
+    /// 递归排序子节点
     func sortChildren(by comparison: (TreeNode, TreeNode) -> Bool) {
         children.sort(by: comparison)
         children.forEach { $0.sortChildren(by: comparison) }
     }
-    
+
     // MARK: - Equatable
     static func == (lhs: TreeNode, rhs: TreeNode) -> Bool {
         return lhs.id == rhs.id
     }
 }
 
-// MARK: - 文件类型枚举
+// MARK: FileType - 文件类型枚举
+/// 文件类型分类枚举
+/// 根据文件扩展名进行智能分类
+///
+/// 支持的类型：
+/// - document: 文档类文件
+/// - image: 图片类文件
+/// - video: 视频类文件
+/// - audio: 音频类文件
+/// - archive: 压缩包类文件
+/// - application: 应用程序类文件
+/// - system: 系统类文件
+/// - other: 其他类型文件
 enum FileType: String, CaseIterable {
     case document, image, video, audio, archive, application, system, other
-    
+
+    /// 根据文件扩展名判断文件类型
     static func from(extension: String) -> FileType {
         let ext = `extension`.lowercased()
         switch ext {
@@ -326,7 +399,8 @@ enum FileType: String, CaseIterable {
             return .other
         }
     }
-    
+
+    /// 本地化显示名称
     var displayName: String {
         switch self {
         case .document: return "文档"
@@ -341,10 +415,20 @@ enum FileType: String, CaseIterable {
     }
 }
 
-// MARK: - 颜色方案管理器
+// MARK: - 可视化模块
+// MARK: ColorSchemeManager - 颜色方案管理器
+/// 统一的颜色方案管理器
+/// 负责为不同类型的文件和文件夹分配颜色
+///
+/// 特性：
+/// - 单例模式，全局一致的颜色方案
+/// - 基于文件类型的智能配色
+/// - 支持动态透明度调整
+/// - 文件夹和文件的区分显示
 class ColorSchemeManager: ObservableObject {
     static let shared = ColorSchemeManager()
-    
+
+    /// 文件类型颜色映射表
     private let fileTypeColors: [FileType: Color] = [
         .document: .blue,
         .image: .green,
@@ -353,519 +437,489 @@ class ColorSchemeManager: ObservableObject {
         .archive: .orange,
         .application: .gray,
         .system: .yellow,
-        .other: Color(.systemGray)
+        .other: Color(.systemGray),
     ]
-    
+
+    /// 文件夹专用颜色
     private let directoryColor: Color = .brown
-    
+
     private init() {}
-    
+
+    /// 获取节点对应的颜色
     func color(for node: TreeNode) -> Color {
         if node.item.isDirectory {
             return directoryColor.opacity(0.7)
         }
-        
+
         let fileType = FileType.from(extension: node.item.fileExtension)
         return fileTypeColors[fileType] ?? .gray
     }
-    
+
+    /// 获取文件类型对应的颜色
     func color(for fileType: FileType) -> Color {
         return fileTypeColors[fileType] ?? .gray
     }
-    
+
+    /// 获取文件夹颜色
     func colorForDirectory() -> Color {
         return directoryColor
     }
-    
-    // 根据文件大小调整颜色深度
+
+    /// 根据文件大小调整颜色深度
     func adjustedColor(for node: TreeNode, maxSize: Int64) -> Color {
         let baseColor = color(for: node)
-        
-        if maxSize > 0 && node.totalSize > 0 {
+
+        if maxSize > 0 {
             let ratio = Double(node.totalSize) / Double(maxSize)
-            
-            // 透明度范围调整
-            let minOpacity = 0.4
-            let maxOpacity = 1.0
-            let opacity = minOpacity + (ratio * (maxOpacity - minOpacity))
-            
+            let opacity = 0.3 + (ratio * 0.7)  // 透明度范围 0.3 - 1.0
             return baseColor.opacity(opacity)
         }
-        
+
         return baseColor.opacity(0.7)
     }
 }
 
-// MARK: - TreeMap矩形结构
+// MARK: TreeMapRectangle - TreeMap矩形结构
+/// TreeMap可视化中的单个矩形元素
+/// 包含显示逻辑和交互信息
+///
+/// 特性：
+/// - 自适应标签显示：根据矩形大小决定显示内容
+/// - 智能文本截断：保留重要信息（如文件扩展名）
+/// - 分层显示控制：不同层级的显示策略
+/// - 重要性判断：用于优化显示效果
 struct TreeMapRectangle: Identifiable {
     let id = UUID()
     let node: TreeNode
     let rect: CGRect
     let color: Color
     let level: Int
-    
+
+    /**
+     * 是否显示标签的判断逻辑
+     * 基于矩形的实际可视大小，确保标签可读性
+     */
     var shouldShowLabel: Bool {
-        // 降低标签显示的阈值，让更多小文件显示名称
-        rect.width > 40 && rect.height > 20
+        // 矩形需要足够大才显示标签
+        return rect.width > 50 && rect.height > 20
     }
-    
+
+    /**
+     * 智能显示名称
+     * 根据可用空间自动调整显示内容
+     */
     var displayName: String {
-        let maxLength = max(3, Int(rect.width / 6)) // 调整字符长度计算
-        if node.item.name.count > maxLength && maxLength > 3 {
-            return String(node.item.name.prefix(maxLength - 3)) + "..."
+        let availableWidth = rect.width - 8  // 减去padding
+        let estimatedCharWidth: CGFloat = 7  // 估算字符宽度
+        let maxChars = Int(availableWidth / estimatedCharWidth)
+
+        guard maxChars > 3 else { return "" }
+
+        let name = node.item.name
+        if name.count <= maxChars {
+            return name
+        } else {
+            // 智能截断：保留文件扩展名
+            if !node.item.isDirectory && name.contains(".") {
+                let components = name.split(separator: ".", maxSplits: 1)
+                if components.count == 2 {
+                    let namepart = String(components[0])
+                    let ext = String(components[1])
+                    let availableForName = maxChars - ext.count - 4  // "...ext"
+                    if availableForName > 0 {
+                        return String(namepart.prefix(availableForName)) + "..." + ext
+                    }
+                }
+            }
+            // 普通截断
+            return String(name.prefix(maxChars - 3)) + "..."
         }
-        return node.item.name
     }
-    
+
+    /**
+     * 是否显示大小信息
+     * 只有在矩形足够大的情况下才显示
+     */
     var canShowSize: Bool {
-        // 降低大小显示的阈值
-        rect.width > 60 && rect.height > 30
+        return rect.width > 80 && rect.height > 35
     }
-    
+
+    /**
+     * 是否显示详细信息（文件数量等）
+     */
+    var canShowDetails: Bool {
+        return rect.width > 120 && rect.height > 50
+    }
+
+    /**
+     * 格式化的大小字符串
+     */
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: node.totalSize, countStyle: .file)
     }
-    
-    var isVisible: Bool {
-        // 确保即使是很小的矩形也能显示
-        rect.width >= 1.0 && rect.height >= 1.0
+
+    /**
+     * 矩形的重要程度（用于决定显示优先级）
+     * 基于大小和层级
+     */
+    var importance: Double {
+        let sizeWeight = Double(node.totalSize)
+        let levelWeight = 1.0 / Double(level + 1)  // 层级越深权重越小
+        return sizeWeight * levelWeight
+    }
+
+    /**
+     * 是否为重要节点（大文件/文件夹）
+     */
+    var isImportant: Bool {
+        return node.totalSize > 10_000_000  // 大于10MB认为是重要的
+    }
+
+    /**
+     * 获取子文件数量描述
+     */
+    var childrenDescription: String {
+        guard node.item.isDirectory else { return "" }
+        let count = node.children.count
+        if count == 0 {
+            return "空文件夹"
+        } else {
+            return "\(count) 项"
+        }
     }
 }
 
-// MARK: - TreeMap布局计算器
-class TreeMapLayoutCalculator: ObservableObject {
+// MARK: - Binary Tree TreeMap 布局计算器
+/// Binary Tree TreeMap算法实现
+/// Linus式设计原则：消除特殊情况，最简数据结构，零废话
+///
+/// 核心思想：
+/// 1. 把复杂的Squarified算法扔掉 - 它是过度设计的垃圾
+/// 2. 用Binary Tree简单二分法：大的一半，小的一半，完事
+/// 3. 没有特殊情况，没有复杂计算，就是递归二分
+/// 4. 数据结构决定算法 - TreeMap就是个Binary Tree的可视化
+class BinaryTreeMapCalculator: ObservableObject {
+
+    // MARK: - 核心常量 - 实用主义优先
     private let colorSchemeManager = ColorSchemeManager.shared
-    private let minRectSize: CGFloat = 1.0 // 降低最小矩形大小，显示更多小文件
-    private let maxDepth: Int = 8 // 增加最大显示深度
-    private let minVisibleArea: CGFloat = 4.0 // 最小可见区域
-    
+    private let minVisibleSize: CGFloat = 24  // 最小可见尺寸：24x24像素，用户能看清
+    private let maxDepth: Int = 8  // 限制递归深度，避免过度分割
+    private let minFileRatio: Double = 0.01  // 文件大小阈值：小于总大小1%的文件合并显示
+
+    // MARK: - 全局状态 - 一个变量搞定颜色
+    private var globalMaxSize: Int64 = 0
+
+    // MARK: - 主入口 - 就这一个函数，其他都是实现细节
+    /**
+     * Binary Tree TreeMap主算法
+     * 输入：节点和矩形 -> 输出：矩形列表
+     * 没有花哨的东西，就是递归二分
+     */
     func calculateLayout(for node: TreeNode, in rect: CGRect) -> [TreeMapRectangle] {
-        guard rect.width >= minRectSize && rect.height >= minRectSize else {
+        // 太小就不画，实用主义
+        if rect.width < minVisibleSize || rect.height < minVisibleSize {
             return []
         }
-        
-        return calculateLayoutRecursive(for: node, in: rect, level: 0)
+
+        // 设置全局最大值，用于颜色和阈值计算
+        globalMaxSize = findMaxSize(from: node)
+
+        // 开始递归
+        return binaryTreeMap(node: node, rect: rect, depth: 0)
     }
-    
-    private func calculateLayoutRecursive(for node: TreeNode, in rect: CGRect, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        
-        // 过滤掉0字节文件，只保留有实际大小的文件和目录
-        let validChildren = node.children.filter { child in
-            // 保留目录（即使大小为0，因为可能包含有大小的子文件）
-            // 或者保留大小大于0的文件
-            child.item.isDirectory || child.totalSize > 0
+
+    // MARK: - 核心算法 - Binary Tree递归分割
+    /**
+     * Binary Tree核心算法 - 重新设计版本
+     *
+     * Linus式设计原则：
+     * 1. 消除虚拟节点 - 它们是过度设计的垃圾
+     * 2. 直接处理节点数组 - 简单粗暴有效
+     * 3. 没有特殊情况 - 递归到底
+     */
+    private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int) -> [TreeMapRectangle] {
+        // 获取有效子节点
+        let children = getValidChildren(node.children)
+
+        // 递归终止：没有子节点就画叶子
+        if children.isEmpty {
+            return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
-        
-        // 如果是叶子节点或达到最大深度，或者区域太小无法再分割
-        if validChildren.isEmpty || level >= maxDepth || rect.width * rect.height < minVisibleArea * CGFloat(validChildren.count) {
-            // 对于叶子节点，如果是0字节文件则不显示
-            if !node.item.isDirectory && node.totalSize == 0 {
-                return rectangles // 返回空数组，不显示0字节文件
+
+        // 太深了，直接展平所有子节点
+        if depth >= maxDepth {
+            return flattenChildren(children, in: rect, depth: depth)
+        }
+
+        // 只有一个子节点？直接递归
+        if children.count == 1 {
+            return binaryTreeMap(node: children[0], rect: rect, depth: depth + 1)
+        }
+
+        // 二分处理：直接分割节点数组，不需要虚拟节点
+        return binaryPartition(children: children, rect: rect, depth: depth)
+    }
+
+    /**
+     * 二分分割 - 不使用虚拟节点的简洁版本
+     */
+    private func binaryPartition(children: [TreeNode], rect: CGRect, depth: Int)
+        -> [TreeMapRectangle]
+    {
+        guard children.count >= 2 else {
+            // 应该不会到这里，但防御性编程
+            return children.flatMap { binaryTreeMap(node: $0, rect: rect, depth: depth + 1) }
+        }
+
+        // 按大小排序
+        let sortedChildren = children.sorted { $0.totalSize > $1.totalSize }
+
+        // 找到最佳分割点 - 不一定是1个vs其他，而是平衡的分割
+        let splitIndex = findBestSplitIndex(sortedChildren)
+        let leftGroup = Array(sortedChildren[0..<splitIndex])
+        let rightGroup = Array(sortedChildren[splitIndex...])
+
+        // 计算分组大小比例
+        let leftSize = leftGroup.reduce(0) { $0 + $1.totalSize }
+        let rightSize = rightGroup.reduce(0) { $0 + $1.totalSize }
+        let totalSize = leftSize + rightSize
+
+        guard totalSize > 0 else { return [] }
+
+        let leftRatio = CGFloat(leftSize) / CGFloat(totalSize)
+
+        // 分割矩形
+        let (leftRect, rightRect) = splitRect(
+            rect: rect,
+            ratio: leftRatio,
+            isVertical: rect.width > rect.height
+        )
+
+        var result: [TreeMapRectangle] = []
+
+        // 递归处理左侧组
+        result.append(contentsOf: processGroup(leftGroup, in: leftRect, depth: depth + 1))
+
+        // 递归处理右侧组
+        result.append(contentsOf: processGroup(rightGroup, in: rightRect, depth: depth + 1))
+
+        return result
+    }
+
+    /**
+     * 处理节点组 - 不创建虚拟节点
+     */
+    private func processGroup(_ nodes: [TreeNode], in rect: CGRect, depth: Int)
+        -> [TreeMapRectangle]
+    {
+        if nodes.count == 1 {
+            return binaryTreeMap(node: nodes[0], rect: rect, depth: depth)
+        } else {
+            return binaryPartition(children: nodes, rect: rect, depth: depth)
+        }
+    }
+
+    /**
+     * 找到最佳分割索引 - 尽量平衡两组
+     */
+    private func findBestSplitIndex(_ sortedChildren: [TreeNode]) -> Int {
+        guard sortedChildren.count > 1 else { return 1 }
+
+        let totalSize = sortedChildren.reduce(0) { $0 + $1.totalSize }
+        let targetSize = totalSize / 2
+
+        var currentSize: Int64 = 0
+        for (index, child) in sortedChildren.enumerated() {
+            currentSize += child.totalSize
+            if currentSize >= targetSize || index == sortedChildren.count - 1 {
+                return max(1, index + 1)  // 至少分割出1个
             }
-            
-            let maxSize = findMaxSize(in: node)
-            let rectangle = TreeMapRectangle(
-                node: node,
-                rect: rect,
-                color: colorSchemeManager.adjustedColor(for: node, maxSize: maxSize),
-                level: level
-            )
-            rectangles.append(rectangle)
-            return rectangles
         }
-        
-        // 按大小排序子节点
-        let sortedChildren = validChildren.sorted { 
-            $0.totalSize > $1.totalSize 
-        }
-        
-        // 使用优化的布局算法
-        let childRectangles = layoutChildrenImproved(sortedChildren, in: rect, level: level + 1)
-        rectangles.append(contentsOf: childRectangles)
-        
-        return rectangles
+
+        return sortedChildren.count / 2  // fallback
     }
-    
-    private func layoutChildrenImproved(_ children: [TreeNode], in rect: CGRect, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        guard !children.isEmpty else { return rectangles }
-        
-        // 只处理有实际大小的文件，不需要为0字节文件分配空间
-        let childrenWithSize = children.compactMap { child -> (TreeNode, Int64)? in
-            let size = child.totalSize
-            // 只保留大小大于0的文件，或者是目录（目录可能包含有大小的子文件）
-            if size > 0 || child.item.isDirectory {
-                return (child, size)
-            }
-            return nil
+
+    /**
+     * 展平处理 - 当递归太深时，简单排列所有子节点
+     * 修复：正确布局子节点，而不是重叠在同一位置
+     */
+    private func flattenChildren(_ children: [TreeNode], in rect: CGRect, depth: Int)
+        -> [TreeMapRectangle]
+    {
+        guard !children.isEmpty else { return [] }
+
+        // 如果只有一个子节点，占据整个区域
+        if children.count == 1 {
+            return [createLeafRectangle(node: children[0], rect: rect, depth: depth)]
         }
-        
-        guard !childrenWithSize.isEmpty else { return rectangles }
-        
-        let totalSize = childrenWithSize.reduce(0) { $0 + $1.1 }
-        guard totalSize > 0 else { return rectangles }
-        
-        // 使用改进的 Squarified TreeMap 算法
-        let childRectangles = squarifyLayoutImproved(childrenWithMinSize: childrenWithSize, in: rect, totalSize: totalSize, level: level)
-        rectangles.append(contentsOf: childRectangles)
-        
-        return rectangles
-    }
-    
-    // MARK: - Improved Squarified TreeMap Algorithm
-    private func squarifyLayoutImproved(childrenWithMinSize: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        guard !childrenWithMinSize.isEmpty else { return [] }
-        
-        var rectangles: [TreeMapRectangle] = []
-        var remaining = childrenWithMinSize
+
+        // 按大小排序
+        let sortedChildren = children.sorted { $0.totalSize > $1.totalSize }
+        let totalSize = sortedChildren.reduce(0) { $0 + $1.totalSize }
+
+        guard totalSize > 0 else { return [] }
+
+        var result: [TreeMapRectangle] = []
         var currentRect = rect
-        
-        while !remaining.isEmpty {
-            // 如果剩余区域太小，强制布局剩余所有节点
-            if currentRect.width < minRectSize || currentRect.height < minRectSize {
-                let remainingRectangles = layoutRemainingNodes(remaining, in: currentRect, totalSize: totalSize, level: level)
-                rectangles.append(contentsOf: remainingRectangles)
-                break
-            }
-            
-            // 找到最佳的行布局
-            let (row, restNodes) = findBestRowImproved(from: remaining, in: currentRect, totalSize: totalSize)
-            
-            // 布局当前行
-            let rowRectangles = layoutRowImproved(row, in: currentRect, totalSize: totalSize, level: level)
-            rectangles.append(contentsOf: rowRectangles)
-            
-            // 更新剩余区域
-            currentRect = getRemainingRectImproved(from: currentRect, after: row, totalSize: totalSize)
-            remaining = restNodes
-        }
-        
-        return rectangles
-    }
-    
-    private func layoutRemainingNodes(_ nodes: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        guard !nodes.isEmpty else { return rectangles }
-        
-        // 简单的网格布局作为后备方案
-        let cols = max(1, Int(sqrt(Double(nodes.count))))
-        let rows = max(1, (nodes.count + cols - 1) / cols)
-        
-        let cellWidth = rect.width / CGFloat(cols)
-        let cellHeight = rect.height / CGFloat(rows)
-        
-        for (index, (node, _)) in nodes.enumerated() {
-            let row = index / cols
-            let col = index % cols
-            
-            let cellRect = CGRect(
-                x: rect.minX + CGFloat(col) * cellWidth,
-                y: rect.minY + CGFloat(row) * cellHeight,
-                width: cellWidth,
-                height: cellHeight
-            )
-            
-            let childRectangles = calculateLayoutRecursive(for: node, in: cellRect, level: level)
-            rectangles.append(contentsOf: childRectangles)
-        }
-        
-        return rectangles
-    }
-    
-    private func findBestRowImproved(from nodes: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64) -> ([(TreeNode, Int64)], [(TreeNode, Int64)]) {
-        guard !nodes.isEmpty else { return ([], []) }
-        
-        var bestRow: [(TreeNode, Int64)] = [nodes[0]]
-        var bestAspectRatio = Double.infinity
-        
-        // 限制单行最大节点数，避免过细分割
-        let maxRowSize = min(nodes.count, 20)
-        
-        for i in 1..<min(nodes.count, maxRowSize) {
-            let currentRow = Array(nodes[0...i])
-            let aspectRatio = calculateWorstAspectRatioImproved(for: currentRow, in: rect, totalSize: totalSize)
-            
-            if aspectRatio < bestAspectRatio {
-                bestRow = currentRow
-                bestAspectRatio = aspectRatio
+
+        // 简单的线性布局
+        let isVertical = rect.width > rect.height
+
+        for (index, child) in sortedChildren.enumerated() {
+            let ratio = CGFloat(child.totalSize) / CGFloat(totalSize)
+
+            if index == sortedChildren.count - 1 {
+                // 最后一个子节点占据剩余空间
+                result.append(createLeafRectangle(node: child, rect: currentRect, depth: depth))
             } else {
-                // 长宽比开始变差，停止
-                break
+                let childRect: CGRect
+                if isVertical {
+                    // 垂直分割
+                    let width = currentRect.width * ratio
+                    childRect = CGRect(
+                        x: currentRect.minX,
+                        y: currentRect.minY,
+                        width: width,
+                        height: currentRect.height
+                    )
+                    currentRect = CGRect(
+                        x: currentRect.minX + width,
+                        y: currentRect.minY,
+                        width: currentRect.width - width,
+                        height: currentRect.height
+                    )
+                } else {
+                    // 水平分割
+                    let height = currentRect.height * ratio
+                    childRect = CGRect(
+                        x: currentRect.minX,
+                        y: currentRect.minY,
+                        width: currentRect.width,
+                        height: height
+                    )
+                    currentRect = CGRect(
+                        x: currentRect.minX,
+                        y: currentRect.minY + height,
+                        width: currentRect.width,
+                        height: currentRect.height - height
+                    )
+                }
+
+                result.append(createLeafRectangle(node: child, rect: childRect, depth: depth))
             }
         }
-        
-        let remaining = Array(nodes[bestRow.count...])
-        return (bestRow, remaining)
+
+        return result
     }
-    
-    private func calculateWorstAspectRatioImproved(for row: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64) -> Double {
-        let rowSize = row.reduce(0) { $0 + $1.1 }
-        guard rowSize > 0 else { return Double.infinity }
-        
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let isVertical = rect.height > rect.width
-        let rowThickness = isVertical ? rowArea / rect.width : rowArea / rect.height
-        
-        guard rowThickness > 0 else { return Double.infinity }
-        
-        var worstRatio = 0.0
-        
-        for (_, size) in row {
-            let nodeArea = rowArea * CGFloat(size) / CGFloat(rowSize)
-            let nodeLength = nodeArea / rowThickness
-            
-            let ratio = max(nodeLength / rowThickness, rowThickness / nodeLength)
-            worstRatio = max(worstRatio, Double(ratio))
-        }
-        
-        return worstRatio
-    }
-    
-    private func layoutRowImproved(_ row: [(TreeNode, Int64)], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        let rowSize = row.reduce(0) { $0 + $1.1 }
-        guard rowSize > 0 else { return rectangles }
-        
-        let isVertical = rect.height > rect.width
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let rowRect: CGRect
+
+    // MARK: - 工具函数 - 简单直接，没有复杂逻辑
+
+    /**
+     * 分割矩形 - 永远二分，没有特殊情况
+     */
+    private func splitRect(rect: CGRect, ratio: CGFloat, isVertical: Bool) -> (CGRect, CGRect) {
         if isVertical {
-            // 垂直布局：行占据顶部区域
-            let rowHeight = min(rect.height, max(minRectSize, rowArea / rect.width))
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rowHeight)
+            // 垂直分割
+            let splitX = rect.minX + rect.width * ratio
+            let left = CGRect(
+                x: rect.minX, y: rect.minY, width: rect.width * ratio, height: rect.height)
+            let right = CGRect(
+                x: splitX, y: rect.minY, width: rect.width * (1 - ratio), height: rect.height)
+            return (left, right)
         } else {
-            // 水平布局：行占据左侧区域
-            let rowWidth = min(rect.width, max(minRectSize, rowArea / rect.height))
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rowWidth, height: rect.height)
-        }
-        
-        // 在行内布局节点
-        var currentPos: CGFloat = isVertical ? rowRect.minX : rowRect.minY
-        
-        for (node, size) in row {
-            let nodeArea = rowArea * CGFloat(size) / CGFloat(rowSize)
-            let nodeRect: CGRect
-            
-            if isVertical {
-                let nodeWidth = max(minRectSize, nodeArea / rowRect.height)
-                nodeRect = CGRect(
-                    x: currentPos,
-                    y: rowRect.minY,
-                    width: min(nodeWidth, rowRect.maxX - currentPos),
-                    height: rowRect.height
-                )
-                currentPos += nodeRect.width
-            } else {
-                let nodeHeight = max(minRectSize, nodeArea / rowRect.width)
-                nodeRect = CGRect(
-                    x: rowRect.minX,
-                    y: currentPos,
-                    width: rowRect.width,
-                    height: min(nodeHeight, rowRect.maxY - currentPos)
-                )
-                currentPos += nodeRect.height
-            }
-            
-            // 确保矩形不超出边界
-            let clampedRect = CGRect(
-                x: max(rect.minX, nodeRect.minX),
-                y: max(rect.minY, nodeRect.minY),
-                width: max(minRectSize, min(nodeRect.width, rect.maxX - nodeRect.minX)),
-                height: max(minRectSize, min(nodeRect.height, rect.maxY - nodeRect.minY))
-            )
-            
-            // 递归计算子布局
-            let childRectangles = calculateLayoutRecursive(for: node, in: clampedRect, level: level)
-            rectangles.append(contentsOf: childRectangles)
-        }
-        
-        return rectangles
-    }
-    
-    private func getRemainingRectImproved(from rect: CGRect, after row: [(TreeNode, Int64)], totalSize: Int64) -> CGRect {
-        let rowSize = row.reduce(0) { $0 + $1.1 }
-        guard totalSize > 0 else { return rect }
-        
-        let ratio = CGFloat(rowSize) / CGFloat(totalSize)
-        let isVertical = rect.height > rect.width
-        
-        if isVertical {
-            let usedHeight = min(rect.height, max(minRectSize, rect.height * ratio))
-            return CGRect(
-                x: rect.minX,
-                y: rect.minY + usedHeight,
-                width: rect.width,
-                height: max(minRectSize, rect.height - usedHeight)
-            )
-        } else {
-            let usedWidth = min(rect.width, max(minRectSize, rect.width * ratio))
-            return CGRect(
-                x: rect.minX + usedWidth,
-                y: rect.minY,
-                width: max(minRectSize, rect.width - usedWidth),
-                height: rect.height
-            )
+            // 水平分割
+            let splitY = rect.minY + rect.height * ratio
+            let top = CGRect(
+                x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * ratio)
+            let bottom = CGRect(
+                x: rect.minX, y: splitY, width: rect.width, height: rect.height * (1 - ratio))
+            return (top, bottom)
         }
     }
-    
-        
-    // MARK: - Improved Squarified TreeMap Algorithm
-    
-    private func findBestRow(from nodes: [TreeNode], in rect: CGRect, totalSize: Int64) -> ([TreeNode], [TreeNode]) {
-        guard !nodes.isEmpty else { return ([], []) }
-        
-        var bestRow: [TreeNode] = [nodes[0]]
-        var bestAspectRatio = Double.infinity
-        
-        for i in 1..<nodes.count {
-            let currentRow = Array(nodes[0...i])
-            let aspectRatio = calculateWorstAspectRatio(for: currentRow, in: rect, totalSize: totalSize)
-            
-            if aspectRatio < bestAspectRatio {
-                bestRow = currentRow
-                bestAspectRatio = aspectRatio
-            } else {
-                // 长宽比开始变差，停止
-                break
+
+    /**
+     * 获取有效子节点 - 智能过滤策略
+     *
+     * 过滤规则：
+     * 1. 大小为0的节点（无意义）
+     * 2. 小于总大小1%的文件（太小了，合并处理）
+     * 3. 保留至少前10大的文件（避免全部被过滤）
+     */
+    private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
+        // 基础过滤：移除空文件
+        let nonZeroChildren = children.filter { $0.totalSize > 0 }
+
+        guard !nonZeroChildren.isEmpty else { return [] }
+
+        // 如果子节点不多，直接返回
+        if nonZeroChildren.count <= 5 {
+            return nonZeroChildren
+        }
+
+        // 计算总大小
+        let totalSize = nonZeroChildren.reduce(0) { $0 + $1.totalSize }
+        let sizeThreshold = Int64(Double(totalSize) * minFileRatio)
+
+        // 按大小排序，保留重要文件
+        let sortedChildren = nonZeroChildren.sorted { $0.totalSize > $1.totalSize }
+
+        // 保留策略：
+        // 1. 前10大文件无条件保留
+        // 2. 其他文件必须超过阈值
+        var result: [TreeNode] = []
+
+        for (index, child) in sortedChildren.enumerated() {
+            if index < 10 || child.totalSize >= sizeThreshold {
+                result.append(child)
             }
         }
-        
-        let remaining = Array(nodes[bestRow.count...])
-        return (bestRow, remaining)
+
+        return result.isEmpty ? [sortedChildren[0]] : result
     }
-    
-    private func calculateWorstAspectRatio(for row: [TreeNode], in rect: CGRect, totalSize: Int64) -> Double {
-        let rowSize = row.reduce(0) { $0 + $1.totalSize }
-        guard rowSize > 0 else { return Double.infinity }
-        
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let isVertical = rect.height > rect.width
-        let rowThickness = isVertical ? rowArea / rect.width : rowArea / rect.height
-        
-        var worstRatio = 0.0
-        
-        for node in row {
-            let nodeArea = rowArea * CGFloat(node.totalSize) / CGFloat(rowSize)
-            let nodeLength = nodeArea / rowThickness
-            
-            let ratio = max(nodeLength / rowThickness, rowThickness / nodeLength)
-            worstRatio = max(worstRatio, Double(ratio))
+
+    /**
+     * 查找最大文件大小 - 简单遍历
+     */
+    private func findMaxSize(from node: TreeNode) -> Int64 {
+        var maxSize = node.totalSize
+
+        func traverse(_ current: TreeNode) {
+            maxSize = max(maxSize, current.totalSize)
+            current.children.forEach { traverse($0) }
         }
-        
-        return worstRatio
+
+        traverse(node)
+        return maxSize
     }
-    
-    private func layoutRow(_ row: [TreeNode], in rect: CGRect, totalSize: Int64, level: Int) -> [TreeMapRectangle] {
-        var rectangles: [TreeMapRectangle] = []
-        let rowSize = row.reduce(0) { $0 + $1.totalSize }
-        guard rowSize > 0 else { return rectangles }
-        
-        let isVertical = rect.height > rect.width
-        let rectArea = rect.width * rect.height
-        let rowArea = rectArea * CGFloat(rowSize) / CGFloat(totalSize)
-        
-        let rowRect: CGRect
-        if isVertical {
-            // 垂直布局：行占据顶部区域
-            let rowHeight = rowArea / rect.width
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rowHeight)
-        } else {
-            // 水平布局：行占据左侧区域
-            let rowWidth = rowArea / rect.height
-            rowRect = CGRect(x: rect.minX, y: rect.minY, width: rowWidth, height: rect.height)
-        }
-        
-        // 在行内布局节点
-        var currentPos: CGFloat = isVertical ? rowRect.minX : rowRect.minY
-        
-        for node in row {
-            let nodeArea = rowArea * CGFloat(node.totalSize) / CGFloat(rowSize)
-            let nodeRect: CGRect
-            
-            if isVertical {
-                let nodeWidth = nodeArea / rowRect.height
-                nodeRect = CGRect(
-                    x: currentPos,
-                    y: rowRect.minY,
-                    width: nodeWidth,
-                    height: rowRect.height
-                )
-                currentPos += nodeWidth
-            } else {
-                let nodeHeight = nodeArea / rowRect.width
-                nodeRect = CGRect(
-                    x: rowRect.minX,
-                    y: currentPos,
-                    width: rowRect.width,
-                    height: nodeHeight
-                )
-                currentPos += nodeHeight
-            }
-            
-            // 递归计算子布局
-            let childRectangles = calculateLayoutRecursive(for: node, in: nodeRect, level: level)
-            rectangles.append(contentsOf: childRectangles)
-        }
-        
-        return rectangles
-    }
-    
-    private func getRemainingRect(from rect: CGRect, after row: [TreeNode], totalSize: Int64) -> CGRect {
-        let rowSize = row.reduce(0) { $0 + $1.totalSize }
-        guard totalSize > 0 else { return rect }
-        
-        let ratio = CGFloat(rowSize) / CGFloat(totalSize)
-        let isVertical = rect.height > rect.width
-        
-        if isVertical {
-            let usedHeight = rect.height * ratio
-            return CGRect(
-                x: rect.minX,
-                y: rect.minY + usedHeight,
-                width: rect.width,
-                height: rect.height - usedHeight
-            )
-        } else {
-            let usedWidth = rect.width * ratio
-            return CGRect(
-                x: rect.minX + usedWidth,
-                y: rect.minY,
-                width: rect.width - usedWidth,
-                height: rect.height
-            )
-        }
-    }
-    
-    private func findMaxSize(in node: TreeNode) -> Int64 {
-        if let parent = node.parent {
-            return parent.children.map { $0.totalSize }.max() ?? node.totalSize
-        }
-        return node.totalSize
+
+    /**
+     * 创建叶子矩形 - 就是包装一下数据
+     */
+    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int) -> TreeMapRectangle {
+        return TreeMapRectangle(
+            node: node,
+            rect: rect,
+            color: colorSchemeManager.adjustedColor(for: node, maxSize: globalMaxSize),
+            level: depth
+        )
     }
 }
 
-// MARK: - 文件系统扫描服务
-/**
- * 高性能文件系统扫描服务
- * 
- * 主要优化特性：
- * 1. 使用getattrlistbulk API进行批量文件属性获取，减少系统调用开销
- * 2. 内存优化：分批处理文件，避免内存峰值过高
- * 3. 异步处理：支持任务取消，不阻塞UI线程
- * 4. 错误处理：批量扫描失败时自动回退到传统方法
- * 5. 进度跟踪：实时更新扫描进度和统计信息
- */
+// MARK: - 文件系统服务模块
+// MARK: FileSystemService - 文件系统扫描服务
+/// 高性能文件系统扫描服务
+///
+/// 主要特性：
+/// 1. 批量API优化：使用getattrlistbulk减少系统调用
+/// 2. 内存管理：分批处理，控制内存峰值
+/// 3. 异步处理：支持任务取消，保持UI响应
+/// 4. 容错机制：批量扫描失败时自动回退
+/// 5. 进度追踪：实时更新扫描状态和统计
+/// 6. 权限处理：安全的文件系统访问
 @MainActor
 class FileSystemService: ObservableObject {
     static let shared = FileSystemService()
-    
+
     // MARK: - Published Properties
     @Published var isScanning = false
     @Published var scanProgress: Double = 0.0
@@ -874,39 +928,39 @@ class FileSystemService: ObservableObject {
     @Published var totalSize: Int64 = 0
     @Published var rootNode: TreeNode?
     @Published var errorMessage: String?
-    
+
     // MARK: - Private Properties
     private let fileManager = FileManager.default
     private var scanTask: Task<Void, Never>?
-    private var estimatedTotalFiles: Int = 1000 // 用于进度估算
-    
+    private var estimatedTotalFiles: Int = 1000  // 用于进度估算
+
     init() {}
-    
+
     // MARK: - Public Methods
     func scanDirectory(at url: URL) {
         guard !isScanning else { return }
-        
+
         // 重置状态
         resetScanState()
-        
+
         scanTask = Task {
             await performScan(at: url)
         }
     }
-    
+
     func cancelScan() {
         scanTask?.cancel()
         scanTask = nil
         isScanning = false
         errorMessage = "扫描已取消"
     }
-    
+
     func getAvailableVolumes() -> [URL] {
         return fileManager.mountedVolumeURLs(includingResourceValuesForKeys: [
-            .volumeNameKey, .volumeAvailableCapacityKey, .volumeTotalCapacityKey
+            .volumeNameKey, .volumeAvailableCapacityKey, .volumeTotalCapacityKey,
         ]) ?? []
     }
-    
+
     // MARK: - Private Methods
     private func resetScanState() {
         isScanning = true
@@ -917,97 +971,98 @@ class FileSystemService: ObservableObject {
         errorMessage = nil
         rootNode = nil
     }
-    
+
     private func performScan(at url: URL) async {
         do {
             currentPath = url.path
-            
+
             // 请求访问权限
             guard url.startAccessingSecurityScopedResource() else {
                 throw FileSystemError.accessDenied
             }
-            
+
             defer {
                 url.stopAccessingSecurityScopedResource()
             }
-            
+
             // 创建根节点
             let rootItem = try createFileSystemItem(from: url)
             let root = TreeNode(item: rootItem)
-            
+
             if rootItem.isDirectory {
                 // 先估算文件数量
                 await estimateFileCount(at: url)
-                
+
                 // 扫描目录
                 await scanRecursively(node: root, currentDepth: 0)
             }
-            
+
             rootNode = root
             scanProgress = 1.0
-            
+
         } catch {
             errorMessage = "扫描失败: \(error.localizedDescription)"
             print("扫描失败: \(error)")
         }
-        
+
         isScanning = false
     }
-    
+
     private func estimateFileCount(at url: URL) async {
         do {
-            let contents = try fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-            estimatedTotalFiles = max(contents.count * 10, 1000) // 简单估算
+            let contents = try fileManager.contentsOfDirectory(
+                at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+            estimatedTotalFiles = max(contents.count * 10, 1000)  // 简单估算
         } catch {
             estimatedTotalFiles = 1000
         }
     }
-    
+
     /**
      * 使用优化的批量扫描算法递归扫描目录
-     * 
+     *
      * 性能优化策略：
      * 1. 批量API：使用getattrlistbulk一次获取多个文件属性
      * 2. 内存管理：分批处理文件，控制内存使用峰值
      * 3. 异步处理：定期让出执行权，保持UI响应性
      * 4. 错误恢复：批量扫描失败时自动回退到传统方法
      * 5. 取消支持：支持任务取消，避免无用的计算
-     * 
+     *
      * @param node: 要扫描的目录节点
      * @param currentDepth: 当前递归深度
      */
     private func scanRecursively(node: TreeNode, currentDepth: Int) async {
         // 限制扫描深度以避免过深递归和提高性能
         guard currentDepth < 10 else { return }
-        
+
         // 检查任务是否被取消
         guard !Task.isCancelled else { return }
-        
+
         do {
             // 使用批量扫描API获取目录内容
             let bulkAttributes = try BulkFileScanner.scanDirectory(at: node.item.path.path)
-            
+
             // 内存优化：使用懒加载和批处理
-            let batchSize = 100 // 每批处理100个文件，平衡内存和性能
-            
+            let batchSize = 100  // 每批处理100个文件，平衡内存和性能
+
             for batch in bulkAttributes.chunked(into: batchSize) {
                 // 检查任务是否被取消
                 guard !Task.isCancelled else { return }
-                
+
                 // 批量处理文件
                 await processBatch(batch, parentNode: node, currentDepth: currentDepth)
-                
+
                 // 让出执行权，避免阻塞UI
                 await Task.yield()
             }
-            
+
         } catch {
             print("批量扫描目录失败 \(node.item.path): \(error)")
             // 回退到传统扫描方法
             await scanRecursivelyFallback(node: node, currentDepth: currentDepth)
         }
     }
-    
+
     /**
      * 批量处理文件属性数据
      * 内存优化策略：
@@ -1018,11 +1073,13 @@ class FileSystemService: ObservableObject {
      * @param parentNode: 父节点
      * @param currentDepth: 当前递归深度
      */
-    private func processBatch(_ batch: [BulkFileAttributes], parentNode: TreeNode, currentDepth: Int) async {
+    private func processBatch(
+        _ batch: [BulkFileAttributes], parentNode: TreeNode, currentDepth: Int
+    ) async {
         for attributes in batch {
             // 检查任务是否被取消
             guard !Task.isCancelled else { return }
-            
+
             // 创建FileSystemItem和TreeNode
             let item = FileSystemItem(
                 name: attributes.name,
@@ -1032,27 +1089,27 @@ class FileSystemService: ObservableObject {
                 creationDate: attributes.creationDate,
                 modificationDate: attributes.modificationDate
             )
-            
+
             let childNode = TreeNode(item: item, parent: parentNode)
             parentNode.addChild(childNode)
-            
+
             // 更新统计信息
             filesScanned += 1
             totalSize += item.size
             currentPath = item.path.path
-            
+
             // 定期更新进度，减少UI更新频率
             if filesScanned % 50 == 0 {
                 scanProgress = min(0.95, Double(filesScanned) / Double(estimatedTotalFiles))
             }
-            
+
             // 递归扫描子目录
             if item.isDirectory {
                 await scanRecursively(node: childNode, currentDepth: currentDepth + 1)
             }
         }
     }
-    
+
     /**
      * 传统扫描方法的回退实现
      * 当批量扫描失败时使用此方法保证兼容性
@@ -1060,61 +1117,63 @@ class FileSystemService: ObservableObject {
     private func scanRecursivelyFallback(node: TreeNode, currentDepth: Int) async {
         // 限制扫描深度以避免过深递归和提高性能
         guard currentDepth < 10 else { return }
-        
+
         // 检查任务是否被取消
         guard !Task.isCancelled else { return }
-        
+
         do {
             let contents = try fileManager.contentsOfDirectory(
                 at: node.item.path,
                 includingPropertiesForKeys: [
                     .nameKey, .fileSizeKey, .isDirectoryKey,
-                    .creationDateKey, .contentModificationDateKey
+                    .creationDateKey, .contentModificationDateKey,
                 ],
                 options: [.skipsHiddenFiles]
             )
-            
+
             for itemURL in contents {
                 // 检查任务是否被取消
                 guard !Task.isCancelled else { return }
-                
+
                 do {
                     let item = try createFileSystemItem(from: itemURL)
                     let childNode = TreeNode(item: item, parent: node)
                     node.addChild(childNode)
-                    
+
                     // 更新统计信息
                     filesScanned += 1
                     totalSize += item.size
                     currentPath = item.path.path
-                    
+
                     // 更新进度
                     if filesScanned % 50 == 0 {
                         scanProgress = min(0.95, Double(filesScanned) / Double(estimatedTotalFiles))
                     }
-                    
+
                     // 递归扫描子目录
                     if item.isDirectory {
-                        await scanRecursivelyFallback(node: childNode, currentDepth: currentDepth + 1)
+                        await scanRecursivelyFallback(
+                            node: childNode, currentDepth: currentDepth + 1)
                     }
-                    
+
                 } catch {
                     // 跳过无法访问的文件，继续扫描其他文件
                     continue
                 }
             }
-            
+
         } catch {
             print("无法扫描目录 \(node.item.path): \(error)")
         }
     }
-    
+
+    /// 创建FileSystemItem实例
     private func createFileSystemItem(from url: URL) throws -> FileSystemItem {
         let resourceValues = try url.resourceValues(forKeys: [
             .nameKey, .fileSizeKey, .isDirectoryKey,
-            .creationDateKey, .contentModificationDateKey
+            .creationDateKey, .contentModificationDateKey,
         ])
-        
+
         return FileSystemItem(
             name: resourceValues.name ?? url.lastPathComponent,
             path: url,
@@ -1126,12 +1185,15 @@ class FileSystemService: ObservableObject {
     }
 }
 
-// MARK: - 错误类型定义
+// MARK: - 工具模块
+// MARK: FileSystemError - 错误类型定义
+/// 文件系统操作相关的错误类型
+/// 提供本地化的错误信息
 enum FileSystemError: LocalizedError {
     case accessDenied
     case invalidPath
     case scanCancelled
-    
+
     var errorDescription: String? {
         switch self {
         case .accessDenied:
@@ -1144,11 +1206,14 @@ enum FileSystemError: LocalizedError {
     }
 }
 
-// MARK: - 数组扩展：支持批量处理
-/**
- * 为Array添加chunked方法，用于将大数组分割成小批次处理
- * 这样可以优化内存使用，避免一次性处理太多数据
- */
+// MARK: Array+Chunked - 数组分块扩展
+/// 为Array添加chunked方法，用于将大数组分割成小批次处理
+/// 这样可以优化内存使用，避免一次性处理太多数据
+///
+/// 使用场景：
+/// - 批量文件处理
+/// - 内存优化
+/// - 流式数据处理
 extension Array {
     func chunked(into size: Int) -> [[Element]] {
         return stride(from: 0, to: count, by: size).map {
