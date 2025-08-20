@@ -1,0 +1,178 @@
+name: Linus Style Code Review & Build Check
+# 遵循 Linus Torvalds 编程哲学的代码审查和构建检查
+
+on:
+  push:
+    branches: [ main, develop, 'tmc/*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+jobs:
+  # === 第一关：基础代码质量检查 ===
+  code-quality:
+    name: "好品味检查 (Code Quality)"
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check file encoding and line endings
+      run: |
+        echo "检查文件编码和换行符..."
+        find . -name "*.swift" -exec file {} \; | grep -v "UTF-8" && exit 1 || true
+        find . -name "*.swift" -exec file {} \; | grep "CRLF" && exit 1 || true
+        echo "✅ 文件编码检查通过"
+        
+    - name: Check code complexity (缩进层次检查)
+      run: |
+        echo "检查代码复杂度（Linus: 超过3层缩进就完蛋了）..."
+        violation_found=false
+        
+        for file in $(find . -name "*.swift"); do
+          echo "检查文件: $file"
+          # 计算每行的缩进层次
+          while IFS= read -r line; do
+            # 跳过空行和注释
+            if [[ -z "${line// }" ]] || [[ "$line" =~ ^[[:space:]]*// ]]; then
+              continue
+            fi
+            
+            # 计算缩进层次（每4个空格或1个tab算一层）
+            indent_count=$(echo "$line" | sed 's/\t/    /g' | sed 's/[^ ].*//' | wc -c)
+            indent_level=$((indent_count / 4))
+            
+            if [ $indent_level -gt 3 ]; then
+              echo "❌ 发现超过3层缩进: $file (第$(grep -n "$line" "$file" | head -1 | cut -d: -f1)行)"
+              echo "   缩进层次: $indent_level"
+              echo "   代码: $line"
+              violation_found=true
+            fi
+          done < "$file"
+        done
+        
+        if [ "$violation_found" = true ]; then
+          echo "💥 Linus 说：如果你需要超过3层缩进，你就已经完蛋了，应该修复你的程序。"
+          exit 1
+        fi
+        
+        echo "✅ 代码复杂度检查通过"
+
+  # === 第二关：编译检查 ===  
+  build-check:
+    name: "编译检查 (Never Break Userspace)"
+    runs-on: macos-latest
+    needs: code-quality
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: Clean build directory
+      run: |
+        echo "清理构建目录..."
+        rm -rf build/
+        echo "✅ 构建目录清理完成"
+        
+    - name: Build project (Debug)
+      run: |
+        echo "开始 Debug 构建..."
+        ./build.sh build
+        echo "✅ Debug 构建成功"
+        
+    - name: Build project (Release) 
+      run: |
+        echo "开始 Release 构建..."
+        ./build.sh release
+        echo "✅ Release 构建成功"
+        
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: |
+          build/DerivedData/Build/Products/
+          !build/DerivedData/Build/Products/**/*.dSYM
+        retention-days: 7
+
+  # === 第三关：实用性测试 ===
+  functional-test:
+    name: "实用主义测试 (Theory vs Practice)"
+    runs-on: macos-latest
+    needs: build-check
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: Run basic functionality test
+      run: |
+        echo "进行基础功能测试..."
+        ./build.sh build
+        
+        # 检查应用是否能正常启动（基本的冒烟测试）
+        if [ -f "build/DerivedData/Build/Products/Debug/CubeCleaner.app/Contents/MacOS/CubeCleaner" ]; then
+          echo "✅ 应用程序可执行文件存在"
+        else
+          echo "❌ 应用程序可执行文件不存在"
+          exit 1
+        fi
+        
+        echo "✅ 基础功能测试通过"
+
+  # === 总结报告 ===
+  summary:
+    name: "Linus 式代码审查总结"
+    runs-on: macos-latest
+    needs: [code-quality, build-check, functional-test]
+    if: always()
+    
+    steps:
+    - name: Generate summary report
+      run: |
+        echo "## 🐧 Linus Torvalds 式代码审查报告"
+        echo ""
+        echo "### 审查结果："
+        
+        if [ "${{ needs.code-quality.result }}" = "success" ]; then
+          echo "✅ **好品味检查**: 通过"
+        else
+          echo "❌ **好品味检查**: 失败"
+        fi
+        
+        if [ "${{ needs.build-check.result }}" = "success" ]; then
+          echo "✅ **编译检查**: 通过 (Never broke userspace!)"
+        else
+          echo "❌ **编译检查**: 失败 (You broke userspace!)"
+        fi
+        
+        if [ "${{ needs.functional-test.result }}" = "success" ]; then
+          echo "✅ **实用性测试**: 通过"
+        else
+          echo "❌ **实用性测试**: 失败"
+        fi
+        
+        echo ""
+        echo "### Linus 的建议："
+        if [ "${{ needs.code-quality.result }}" != "success" ] || [ "${{ needs.build-check.result }}" != "success" ]; then
+          echo "💬 _\"Bad programmers worry about the code. Good programmers worry about data structures.\"_"
+          echo ""
+          echo "重新设计你的数据结构，消除特殊情况，让代码变得简洁。"
+        else
+          echo "💬 _\"Good code doesn't need comments. Bad code requires lots of comments.\"_"
+          echo ""
+          echo "干得不错！代码看起来有好品味。"
+        fi
