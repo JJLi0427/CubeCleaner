@@ -93,17 +93,18 @@ struct ContentView: View {
                             }
                         }
                         .frame(maxWidth: 400)
-                    } else if !rectangles.isEmpty && !isResizing {
-                        // TreeMap可视化 - 使用Canvas避免层级问题
-                        TreeMapCanvasView(
-                            rectangles: rectangles,
-                            onTap: { rectangle in
-                                selectedNode = rectangle.node
+                    } else if let rootNode = fileSystemService.rootNode, !isResizing {
+                        // 递归TreeMap可视化
+                        RecursiveTreeMapView(
+                            node: rootNode,
+                            rect: CGRect(origin: .zero, size: geometry.size),
+                            onTap: { node in
+                                selectedNode = node
                                 showingDetails = true
                             },
-                            onLongPress: { rectangle in
+                            onLongPress: { node in
                                 NSWorkspace.shared.selectFile(
-                                    rectangle.node.item.path.path,
+                                    node.item.path.path,
                                     inFileViewerRootedAtPath: ""
                                 )
                             }
@@ -705,6 +706,196 @@ struct ActionsView: View {
                 }
                 .buttonStyle(.bordered)
             }
+        }
+    }
+}
+
+// MARK: - 递归 TreeMap 视图
+/// 递归实现的 TreeMap 可视化组件
+///
+/// 核心思想：
+/// - 文件：直接绘制矩形
+/// - 文件夹：创建子窗口（标题栏 + 递归子视图）
+/// - 递归终止：无子节点或矩形太小
+struct RecursiveTreeMapView: View {
+    let node: TreeNode
+    let rect: CGRect
+    let onTap: (TreeNode) -> Void
+    let onLongPress: (TreeNode) -> Void
+
+    @StateObject private var layoutCalculator = BinaryTreeMapCalculator()
+    @State private var hoveredNode: TreeNode?
+
+    private let minVisibleSize: CGFloat = 24
+    private let headerHeight: CGFloat = 20
+    private let sizeThreshold: Double = 0.01
+
+    var body: some View {
+        ZStack {
+            if rect.width >= minVisibleSize && rect.height >= minVisibleSize {
+                if node.item.isDirectory && !node.children.isEmpty {
+                    // 文件夹：创建子窗口
+                    directoryView
+                } else {
+                    // 文件：直接绘制
+                    fileView
+                }
+            }
+        }
+        .frame(width: rect.width, height: rect.height)
+        .position(x: rect.minX + rect.width / 2, y: rect.minY + rect.height / 2)
+    }
+
+    // MARK: - 文件夹视图
+    private var directoryView: some View {
+        VStack(spacing: 0) {
+            // 标题栏
+            HStack {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: min(12, headerHeight - 4)))
+                    .foregroundColor(.blue)
+
+                Text(node.item.name)
+                    .font(.system(size: min(11, headerHeight - 4)))
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(ByteCountFormatter.string(fromByteCount: node.totalSize, countStyle: .file))
+                    .font(.system(size: min(9, headerHeight - 6)))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(Color.blue.opacity(0.1))
+            .frame(height: headerHeight)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onTap(node)
+            }
+            .onLongPressGesture {
+                onLongPress(node)
+            }
+
+            // 子内容区域
+            GeometryReader { geo in
+                let contentRect = CGRect(
+                    x: 0,
+                    y: 0,
+                    width: geo.size.width,
+                    height: geo.size.height
+                )
+
+                ZStack(alignment: .topLeading) {
+                    // 递归绘制子节点
+                    ForEach(getValidChildren(), id: \.item.path) { child in
+                        if let childRect = calculateChildRect(for: child, in: contentRect) {
+                            RecursiveTreeMapView(
+                                node: child,
+                                rect: childRect,
+                                onTap: onTap,
+                                onLongPress: onLongPress
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .border(Color.primary.opacity(0.3), width: 1)
+    }
+
+    // MARK: - 文件视图
+    private var fileView: some View {
+        let color = ColorSchemeManager.shared.color(for: node)
+        let isHovered = hoveredNode?.item.path == node.item.path
+
+        return Rectangle()
+            .fill(color.opacity(isHovered ? 0.95 : 0.8))
+            .overlay {
+                if rect.width > 40 && rect.height > 20 {
+                    VStack(spacing: 2) {
+                        Text(node.item.name)
+                            .font(.system(size: min(10, rect.height / 4)))
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+
+                        if rect.height > 40 {
+                            Text(
+                                ByteCountFormatter.string(
+                                    fromByteCount: node.totalSize, countStyle: .file)
+                            )
+                            .font(.system(size: min(8, rect.height / 6)))
+                            .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(2)
+                }
+            }
+            .border(Color.primary.opacity(0.2), width: 0.5)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onTap(node)
+            }
+            .onLongPressGesture {
+                onLongPress(node)
+            }
+    }
+
+    // MARK: - 辅助方法
+
+    /// 获取有效的子节点（过滤小文件）
+    private func getValidChildren() -> [TreeNode] {
+        let children = node.children.filter { $0.totalSize > 0 }
+        guard !children.isEmpty else { return [] }
+
+        let threshold = Int64(Double(node.totalSize) * sizeThreshold)
+
+        // 分离文件和文件夹
+        let files = children.filter { !$0.item.isDirectory }
+        let directories = children.filter { $0.item.isDirectory }
+
+        // 排序
+        let sortedFiles = files.sorted { $0.totalSize > $1.totalSize }
+        let sortedDirectories = directories.sorted { $0.totalSize > $1.totalSize }
+
+        // 过滤
+        let validFiles = sortedFiles.filter { $0.totalSize >= threshold }
+        let validDirectories = sortedDirectories.filter { $0.totalSize >= threshold }
+
+        return validFiles + validDirectories
+    }
+
+    /// 计算子节点的矩形位置
+    private func calculateChildRect(for child: TreeNode, in rect: CGRect) -> CGRect? {
+        let children = getValidChildren()
+        guard !children.isEmpty,
+            let index = children.firstIndex(where: { $0.item.path == child.item.path })
+        else {
+            return nil
+        }
+
+        let totalSize = children.reduce(0) { $0 + $1.totalSize }
+        guard totalSize > 0 else { return nil }
+
+        // 计算前面所有节点占用的空间
+        let previousSize = children[..<index].reduce(0) { $0 + $1.totalSize }
+        let currentRatio = CGFloat(child.totalSize) / CGFloat(totalSize)
+        let previousRatio = CGFloat(previousSize) / CGFloat(totalSize)
+
+        let isVertical = rect.width > rect.height
+
+        if isVertical {
+            // 垂直分割
+            let x = rect.minX + rect.width * previousRatio
+            let width = rect.width * currentRatio
+            return CGRect(x: x, y: rect.minY, width: width, height: rect.height)
+        } else {
+            // 水平分割
+            let y = rect.minY + rect.height * previousRatio
+            let height = rect.height * currentRatio
+            return CGRect(x: rect.minX, y: y, width: rect.width, height: height)
         }
     }
 }

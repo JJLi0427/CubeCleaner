@@ -589,296 +589,213 @@ struct TreeMapRectangle: Identifiable {
     }
 }
 
-// MARK: - Binary Tree TreeMap 布局计算器
-/// Binary Tree TreeMap算法实现
-/// Linus式设计原则：消除特殊情况，最简数据结构，零废话
+// MARK: - Sequential TreeMap 布局计算器
+/// Sequential TreeMap 算法实现
+/// 基于用户自定义的顺序分割算法
 ///
 /// 核心思想：
-/// 1. 把复杂的Squarified算法扔掉 - 它是过度设计的垃圾
-/// 2. 用Binary Tree简单二分法：大的一半，小的一半，完事
-/// 3. 没有特殊情况，没有复杂计算，就是递归二分
-/// 4. 数据结构决定算法 - TreeMap就是个Binary Tree的可视化
+/// 1. 分离文件和文件夹处理
+/// 2. 按大小顺序依次分配空间
+/// 3. 文件直接绘制，文件夹递归处理
+/// 4. 简单的线性分割，易于理解和调试
 class BinaryTreeMapCalculator: ObservableObject {
 
-    // MARK: - 核心常量 - 实用主义优先
+    // MARK: - 常量配置
     private let colorSchemeManager = ColorSchemeManager.shared
-    private let minVisibleSize: CGFloat = 24  // 最小可见尺寸：24x24像素，用户能看清
-    private let maxDepth: Int = 8  // 限制递归深度，避免过度分割
-    private let minFileRatio: Double = 0.01  // 文件大小阈值：小于总大小1%的文件合并显示
+    private let minVisibleSize: CGFloat = 24
+    private let sizeThreshold: Double = 0.01  // 1%阈值
 
-    // MARK: - 全局状态 - 一个变量搞定颜色
+    // MARK: - 全局状态
     private var globalMaxSize: Int64 = 0
 
-    // MARK: - 主入口 - 就这一个函数，其他都是实现细节
+    // MARK: - 主入口函数
     /**
-     * Binary Tree TreeMap主算法
-     * 输入：节点和矩形 -> 输出：矩形列表
-     * 没有花哨的东西，就是递归二分
+     * TreeMap布局计算主入口
+     *
+     * 输入参数：
+     * - node: TreeNode - 文件系统树节点
+     * - rect: CGRect - 显示区域矩形
+     *
+     * 输出：
+     * - [TreeMapRectangle] - 矩形列表，用于UI渲染
      */
     func calculateLayout(for node: TreeNode, in rect: CGRect) -> [TreeMapRectangle] {
-        // 太小就不画，实用主义
         if rect.width < minVisibleSize || rect.height < minVisibleSize {
             return []
         }
 
-        // 设置全局最大值，用于颜色和阈值计算
         globalMaxSize = findMaxSize(from: node)
-
-        // 开始递归
-        return binaryTreeMap(node: node, rect: rect, depth: 0)
+        return sequentialLayout(node: node, rect: rect, depth: 0)
     }
 
-    // MARK: - 核心算法 - Binary Tree递归分割
+    // MARK: - 核心递归算法
     /**
-     * Binary Tree核心算法 - 重新设计版本
+     * 顺序布局算法
      *
-     * Linus式设计原则：
-     * 1. 消除虚拟节点 - 它们是过度设计的垃圾
-     * 2. 直接处理节点数组 - 简单粗暴有效
-     * 3. 没有特殊情况 - 递归到底
+     * 算法流程：
+     * 1. 接收上层传来的rect
+     * 2. 分离并排序文件和文件夹
+     * 3. 对每个子项按比例分配矩形
+     * 4. 文件创建叶子节点，文件夹递归处理
+     *
+     * 参数：
+     * - node: TreeNode - 当前节点
+     * - rect: CGRect - 当前可用矩形区域
+     * - depth: Int - 递归深度
+     *
+     * 返回：
+     * - [TreeMapRectangle] - 当前节点及其子节点的所有矩形
      */
-    private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int) -> [TreeMapRectangle] {
-        // 获取有效子节点
-        let children = getValidChildren(node.children)
+    private func sequentialLayout(node: TreeNode, rect: CGRect, depth: Int) -> [TreeMapRectangle] {
+        let children = node.children.filter { $0.totalSize > 0 }
 
-        // 递归终止：没有子节点就画叶子
         if children.isEmpty {
             return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
-        // 太深了，直接展平所有子节点
-        if depth >= maxDepth {
-            return flattenChildren(children, in: rect, depth: depth)
-        }
-
-        // 只有一个子节点？直接递归
-        if children.count == 1 {
-            return binaryTreeMap(node: children[0], rect: rect, depth: depth + 1)
-        }
-
-        // 二分处理：直接分割节点数组，不需要虚拟节点
-        return binaryPartition(children: children, rect: rect, depth: depth)
-    }
-
-    /**
-     * 二分分割 - 不使用虚拟节点的简洁版本
-     */
-    private func binaryPartition(children: [TreeNode], rect: CGRect, depth: Int)
-        -> [TreeMapRectangle]
-    {
-        guard children.count >= 2 else {
-            // 应该不会到这里，但防御性编程
-            return children.flatMap { binaryTreeMap(node: $0, rect: rect, depth: depth + 1) }
-        }
-
-        // 按大小排序
-        let sortedChildren = children.sorted { $0.totalSize > $1.totalSize }
-
-        // 找到最佳分割点 - 不一定是1个vs其他，而是平衡的分割
-        let splitIndex = findBestSplitIndex(sortedChildren)
-        let leftGroup = Array(sortedChildren[0..<splitIndex])
-        let rightGroup = Array(sortedChildren[splitIndex...])
-
-        // 计算分组大小比例
-        let leftSize = leftGroup.reduce(0) { $0 + $1.totalSize }
-        let rightSize = rightGroup.reduce(0) { $0 + $1.totalSize }
-        let totalSize = leftSize + rightSize
-
+        let totalSize = node.totalSize
         guard totalSize > 0 else { return [] }
 
-        let leftRatio = CGFloat(leftSize) / CGFloat(totalSize)
+        let threshold = Int64(Double(totalSize) * sizeThreshold)
 
-        // 分割矩形
-        let (leftRect, rightRect) = splitRect(
-            rect: rect,
-            ratio: leftRatio,
-            isVertical: rect.width > rect.height
-        )
+        // 分离文件和文件夹
+        let files = children.filter { !$0.item.isDirectory }
+        let directories = children.filter { $0.item.isDirectory }
 
-        var result: [TreeMapRectangle] = []
+        // 按大小降序排序
+        let sortedFiles = files.sorted { $0.totalSize > $1.totalSize }
+        let sortedDirectories = directories.sorted { $0.totalSize > $1.totalSize }
 
-        // 递归处理左侧组
-        result.append(contentsOf: processGroup(leftGroup, in: leftRect, depth: depth + 1))
+        // 过滤小于阈值的项
+        let validFiles = sortedFiles.filter { $0.totalSize >= threshold }
+        let validDirectories = sortedDirectories.filter { $0.totalSize >= threshold }
 
-        // 递归处理右侧组
-        result.append(contentsOf: processGroup(rightGroup, in: rightRect, depth: depth + 1))
+        // 合并为单一列表：先文件后文件夹
+        let allChildren = validFiles + validDirectories
 
-        return result
+        guard !allChildren.isEmpty else {
+            return [createLeafRectangle(node: node, rect: rect, depth: depth)]
+        }
+
+        // 顺序分配空间
+        return layoutChildren(allChildren, in: rect, totalSize: totalSize, depth: depth)
     }
 
     /**
-     * 处理节点组 - 不创建虚拟节点
+     * 为子节点分配矩形空间
+     *
+     * 策略：
+     * 1. 根据矩形宽高比决定分割方向
+     * 2. 按照 childSize/totalSize 比例分配长度
+     * 3. 文件直接创建矩形，文件夹递归处理
      */
-    private func processGroup(_ nodes: [TreeNode], in rect: CGRect, depth: Int)
-        -> [TreeMapRectangle]
-    {
-        if nodes.count == 1 {
-            return binaryTreeMap(node: nodes[0], rect: rect, depth: depth)
-        } else {
-            return binaryPartition(children: nodes, rect: rect, depth: depth)
-        }
-    }
-
-    /**
-     * 找到最佳分割索引 - 尽量平衡两组
-     */
-    private func findBestSplitIndex(_ sortedChildren: [TreeNode]) -> Int {
-        guard sortedChildren.count > 1 else { return 1 }
-
-        let totalSize = sortedChildren.reduce(0) { $0 + $1.totalSize }
-        let targetSize = totalSize / 2
-
-        var currentSize: Int64 = 0
-        for (index, child) in sortedChildren.enumerated() {
-            currentSize += child.totalSize
-            if currentSize >= targetSize || index == sortedChildren.count - 1 {
-                return max(1, index + 1)  // 至少分割出1个
-            }
-        }
-
-        return sortedChildren.count / 2  // fallback
-    }
-
-    /**
-     * 展平处理 - 当递归太深时，简单排列所有子节点
-     * 修复：正确布局子节点，而不是重叠在同一位置
-     */
-    private func flattenChildren(_ children: [TreeNode], in rect: CGRect, depth: Int)
-        -> [TreeMapRectangle]
-    {
-        guard !children.isEmpty else { return [] }
-
-        // 如果只有一个子节点，占据整个区域
-        if children.count == 1 {
-            return [createLeafRectangle(node: children[0], rect: rect, depth: depth)]
-        }
-
-        // 按大小排序
-        let sortedChildren = children.sorted { $0.totalSize > $1.totalSize }
-        let totalSize = sortedChildren.reduce(0) { $0 + $1.totalSize }
-
-        guard totalSize > 0 else { return [] }
+    private func layoutChildren(
+        _ children: [TreeNode],
+        in rect: CGRect,
+        totalSize: Int64,
+        depth: Int
+    ) -> [TreeMapRectangle] {
+        guard !children.isEmpty, totalSize > 0 else { return [] }
 
         var result: [TreeMapRectangle] = []
         var currentRect = rect
 
-        // 简单的线性布局
         let isVertical = rect.width > rect.height
 
-        for (index, child) in sortedChildren.enumerated() {
+        for (index, child) in children.enumerated() {
             let ratio = CGFloat(child.totalSize) / CGFloat(totalSize)
 
-            if index == sortedChildren.count - 1 {
-                // 最后一个子节点占据剩余空间
-                result.append(createLeafRectangle(node: child, rect: currentRect, depth: depth))
-            } else {
-                let childRect: CGRect
-                if isVertical {
-                    // 垂直分割
-                    let width = currentRect.width * ratio
-                    childRect = CGRect(
-                        x: currentRect.minX,
-                        y: currentRect.minY,
-                        width: width,
-                        height: currentRect.height
-                    )
-                    currentRect = CGRect(
-                        x: currentRect.minX + width,
-                        y: currentRect.minY,
-                        width: currentRect.width - width,
-                        height: currentRect.height
-                    )
+            if index == children.count - 1 {
+                // 最后一个占据剩余空间
+                if child.item.isDirectory {
+                    result.append(
+                        contentsOf: sequentialLayout(
+                            node: child,
+                            rect: currentRect,
+                            depth: depth + 1
+                        ))
                 } else {
-                    // 水平分割
-                    let height = currentRect.height * ratio
-                    childRect = CGRect(
-                        x: currentRect.minX,
-                        y: currentRect.minY,
-                        width: currentRect.width,
-                        height: height
-                    )
-                    currentRect = CGRect(
-                        x: currentRect.minX,
-                        y: currentRect.minY + height,
-                        width: currentRect.width,
-                        height: currentRect.height - height
-                    )
+                    result.append(
+                        createLeafRectangle(
+                            node: child,
+                            rect: currentRect,
+                            depth: depth
+                        ))
+                }
+            } else {
+                let (childRect, remainingRect) = splitRect(
+                    currentRect,
+                    ratio: ratio,
+                    isVertical: isVertical
+                )
+
+                if child.item.isDirectory {
+                    result.append(
+                        contentsOf: sequentialLayout(
+                            node: child,
+                            rect: childRect,
+                            depth: depth + 1
+                        ))
+                } else {
+                    result.append(
+                        createLeafRectangle(
+                            node: child,
+                            rect: childRect,
+                            depth: depth
+                        ))
                 }
 
-                result.append(createLeafRectangle(node: child, rect: childRect, depth: depth))
+                currentRect = remainingRect
             }
         }
 
         return result
     }
 
-    // MARK: - 工具函数 - 简单直接，没有复杂逻辑
+    // MARK: - 工具函数
 
     /**
-     * 分割矩形 - 永远二分，没有特殊情况
-     */
-    private func splitRect(rect: CGRect, ratio: CGFloat, isVertical: Bool) -> (CGRect, CGRect) {
-        if isVertical {
-            // 垂直分割
-            let splitX = rect.minX + rect.width * ratio
-            let left = CGRect(
-                x: rect.minX, y: rect.minY, width: rect.width * ratio, height: rect.height)
-            let right = CGRect(
-                x: splitX, y: rect.minY, width: rect.width * (1 - ratio), height: rect.height)
-            return (left, right)
-        } else {
-            // 水平分割
-            let splitY = rect.minY + rect.height * ratio
-            let top = CGRect(
-                x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * ratio)
-            let bottom = CGRect(
-                x: rect.minX, y: splitY, width: rect.width, height: rect.height * (1 - ratio))
-            return (top, bottom)
-        }
-    }
-
-    /**
-     * 获取有效子节点 - 智能过滤策略
+     * 分割矩形
      *
-     * 过滤规则：
-     * 1. 大小为0的节点（无意义）
-     * 2. 小于总大小1%的文件（太小了，合并处理）
-     * 3. 保留至少前10大的文件（避免全部被过滤）
+     * 根据比例和方向切割矩形
+     * 返回：(分配的矩形, 剩余矩形)
      */
-    private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
-        // 基础过滤：移除空文件
-        let nonZeroChildren = children.filter { $0.totalSize > 0 }
-
-        guard !nonZeroChildren.isEmpty else { return [] }
-
-        // 如果子节点不多，直接返回
-        if nonZeroChildren.count <= 5 {
-            return nonZeroChildren
+    private func splitRect(_ rect: CGRect, ratio: CGFloat, isVertical: Bool) -> (CGRect, CGRect) {
+        if isVertical {
+            let width = rect.width * ratio
+            let allocated = CGRect(
+                x: rect.minX,
+                y: rect.minY,
+                width: width,
+                height: rect.height
+            )
+            let remaining = CGRect(
+                x: rect.minX + width,
+                y: rect.minY,
+                width: rect.width - width,
+                height: rect.height
+            )
+            return (allocated, remaining)
+        } else {
+            let height = rect.height * ratio
+            let allocated = CGRect(
+                x: rect.minX,
+                y: rect.minY,
+                width: rect.width,
+                height: height
+            )
+            let remaining = CGRect(
+                x: rect.minX,
+                y: rect.minY + height,
+                width: rect.width,
+                height: rect.height - height
+            )
+            return (allocated, remaining)
         }
-
-        // 计算总大小
-        let totalSize = nonZeroChildren.reduce(0) { $0 + $1.totalSize }
-        let sizeThreshold = Int64(Double(totalSize) * minFileRatio)
-
-        // 按大小排序，保留重要文件
-        let sortedChildren = nonZeroChildren.sorted { $0.totalSize > $1.totalSize }
-
-        // 保留策略：
-        // 1. 前10大文件无条件保留
-        // 2. 其他文件必须超过阈值
-        var result: [TreeNode] = []
-
-        for (index, child) in sortedChildren.enumerated() {
-            if index < 10 || child.totalSize >= sizeThreshold {
-                result.append(child)
-            }
-        }
-
-        return result.isEmpty ? [sortedChildren[0]] : result
     }
 
     /**
-     * 查找最大文件大小 - 简单遍历
+     * 查找最大文件大小
      */
     private func findMaxSize(from node: TreeNode) -> Int64 {
         var maxSize = node.totalSize
@@ -893,7 +810,7 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /**
-     * 创建叶子矩形 - 就是包装一下数据
+     * 创建叶子矩形
      */
     private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int) -> TreeMapRectangle {
         return TreeMapRectangle(
