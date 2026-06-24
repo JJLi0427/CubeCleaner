@@ -663,6 +663,62 @@ struct BreadcrumbView: View {
     }
 }
 
+// MARK: - 统计条视图
+struct StatsBarView: View {
+    let totalSize: Int64
+    let fileCount: Int
+    let folderCount: Int
+    let isScanning: Bool
+
+    var body: some View {
+        HStack(spacing: 24) {
+            MetricBlock(
+                icon: "externaldrive.fill",
+                value: ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file),
+                label: "总大小"
+            )
+            MetricBlock(
+                icon: "doc.fill",
+                value: "\(fileCount)",
+                label: "文件"
+            )
+            MetricBlock(
+                icon: "folder.fill",
+                value: "\(folderCount)",
+                label: "文件夹"
+            )
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color(.controlBackgroundColor))
+    }
+}
+
+struct MetricBlock: View {
+    let icon: String
+    let value: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(.accentColor)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
 #Preview {
     ContentView()
         .frame(width: 800, height: 600)
