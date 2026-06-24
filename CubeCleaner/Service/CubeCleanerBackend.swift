@@ -633,6 +633,12 @@ class BinaryTreeMapCalculator: ObservableObject {
         // 设置全局最大值，用于颜色和阈值计算
         globalMaxSize = findMaxSize(from: node)
 
+        // 入口为聚合"其他"块：用户双击钻取进来，需展开其内部小文件。
+        // 普通目录走默认分支；聚合节点只有在作为钻取根时才展开。
+        if node.isAggregated {
+            return binaryTreeMap(node: node, rect: rect, depth: 0, expandAggregated: true)
+        }
+
         // 开始递归
         return binaryTreeMap(node: node, rect: rect, depth: 0)
     }
@@ -646,9 +652,9 @@ class BinaryTreeMapCalculator: ObservableObject {
      * 2. 直接处理节点数组 - 简单粗暴有效
      * 3. 没有特殊情况 - 递归到底
      */
-    private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int) -> [TreeMapRectangle] {
+    private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int, expandAggregated: Bool = false) -> [TreeMapRectangle] {
         // 获取有效子节点
-        let children = getValidChildren(node.children)
+        let children = getValidChildren(of: node)
 
         // 递归终止：没有子节点就画叶子
         if children.isEmpty {
@@ -658,6 +664,13 @@ class BinaryTreeMapCalculator: ObservableObject {
         // 太深了，直接展平所有子节点
         if depth >= maxDepth {
             return flattenChildren(children, in: rect, depth: depth)
+        }
+
+        // 聚合"其他"块：默认作为叶子矩形直接绘制，不参与递归二分。
+        // 当它是用户双击钻取的根节点时(expandAggregated=true)，
+        // 需展开其内部小文件供查看，越过此叶子逻辑继续递归。
+        if node.isAggregated && !expandAggregated {
+            return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
         // 只有一个子节点？直接递归
@@ -854,11 +867,11 @@ class BinaryTreeMapCalculator: ObservableObject {
      * 2. 按大小降序排序
      * 3. 阈值 = 父目录总大小 × minFileRatio (0.5%)
      * 4. 保留所有 >= 阈值的子项
-     * 5. 剩余子项聚合为一个虚拟"其他"节点（面积守恒）
+     * 5. 剩余子项聚合为一个虚拟"其他"节点（面积守恒，保留子项以支持双击钻取）
      * 6. 边界：若全部 < 阈值，不聚合，保留前 10 大，避免空图
      */
-    private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
-        let nonZeroChildren = children.filter { $0.totalSize > 0 }
+    private func getValidChildren(of parent: TreeNode) -> [TreeNode] {
+        let nonZeroChildren = parent.children.filter { $0.totalSize > 0 }
         guard !nonZeroChildren.isEmpty else { return [] }
 
         // 子节点不多，直接返回
@@ -892,7 +905,10 @@ class BinaryTreeMapCalculator: ObservableObject {
             return kept
         }
 
-        // 构造虚拟"其他"节点
+        // 构造虚拟"其他"节点 - 把待聚合的子项挂为它的 children，
+        // 这样双击该块可钻取进去看内部小文件。
+        // 注意：isDirectory 保持 false，使 totalSize 走文件分支返回 item.size，
+        // 保证面积守恒（若为 true 会叠加 children 总大小导致面积翻倍）。
         let aggregatedSize = aggregatedChildren.reduce(Int64(0)) { $0 + $1.totalSize }
         let otherItem = FileSystemItem(
             name: "其他 (\(aggregatedChildren.count) 项)",
@@ -902,8 +918,13 @@ class BinaryTreeMapCalculator: ObservableObject {
             creationDate: Date(timeIntervalSince1970: 0),
             modificationDate: Date(timeIntervalSince1970: 0)
         )
-        let otherNode = TreeNode(item: otherItem, parent: nil)
+        let otherNode = TreeNode(item: otherItem, parent: parent)
         otherNode.markAsAggregated()
+        // 复用原有子节点（不改其 parent），仅挂到 otherNode.children 下，
+        // 供钻取后布局使用；面包屑只需沿 otherNode.parent 上溯即可。
+        for child in aggregatedChildren {
+            otherNode.addChild(child)
+        }
 
         return kept + [otherNode]
     }

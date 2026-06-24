@@ -127,8 +127,10 @@ struct ContentView: View {
                                 )
                             },
                             onDoubleTap: { rectangle in
-                                if rectangle.node.item.isDirectory && !rectangle.node.isAggregated {
-                                    currentRoot = rectangle.node
+                                // 目录可双击进入；聚合的"其他"块也可双击钻取内部小文件
+                                let node = rectangle.node
+                                if node.isAggregated || node.item.isDirectory {
+                                    currentRoot = node
                                     Task {
                                         await updateLayoutOptimized(size: geometry.size)
                                     }
