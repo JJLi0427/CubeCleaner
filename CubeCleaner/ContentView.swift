@@ -89,6 +89,7 @@ struct ContentView: View {
                         .background(.ultraThinMaterial)
                         Spacer()
                     }
+                    .zIndex(1)
 
                     if rectangles.isEmpty && !fileSystemService.isScanning && !isResizing
                         && !isLayouting
@@ -349,13 +350,20 @@ struct TreeMapCanvasView: View {
             }
         }
         .gesture(
-            // 统一的点击手势处理 - 手动计算点击位置
-            SpatialTapGesture()
+            // 双击优先；若未触发双击则作为单击。避免单击打开详情浮层吞掉双击的第二下。
+            SpatialTapGesture(count: 2)
                 .onEnded { value in
                     if let hitRectangle = findRectangleAt(value.location) {
-                        onTap(hitRectangle)
+                        onDoubleTap(hitRectangle)
                     }
                 }
+                .exclusively(before: SpatialTapGesture()
+                    .onEnded { value in
+                        if let hitRectangle = findRectangleAt(value.location) {
+                            onTap(hitRectangle)
+                        }
+                    }
+                )
         )
         .gesture(
             // 长按手势
@@ -371,17 +379,6 @@ struct TreeMapCanvasView: View {
                         }
                     default:
                         break
-                    }
-                }
-        )
-        .onTapGesture(count: 2) { _ in
-            // 双击由 DragGesture 的 location 无法直接拿到，改用 spatialTapGesture
-        }
-        .gesture(
-            SpatialTapGesture(count: 2)
-                .onEnded { value in
-                    if let hitRectangle = findRectangleAt(value.location) {
-                        onDoubleTap(hitRectangle)
                     }
                 }
         )

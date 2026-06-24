@@ -25,12 +25,12 @@
 
 ## P1 - 架构 & 可维护性
 
-1. **拆分 CubeCleanerBackend.swift (1223 行)** →
+1. **拆分 CubeCleanerBackend.swift (1261 行)** →
    - `Models/`：`FileSystemItem`、`TreeNode`、`FileType`
    - `Scanning/`：`BulkFileScanner`
    - `Layout/`：`BinaryTreeMapCalculator`、`TreeMapRectangle`、`ColorSchemeManager`
    - `Services/`：`FileSystemService`
-2. **拆分 ContentView.swift (715 行)** → `TreeMapCanvasView`、`DetailsPanelView`、`BreadcrumbView`、`ActionsView` 各自独立文件。
+2. **拆分 ContentView.swift (670 行)** → `TreeMapCanvasView`、`DetailsPanelView`、`BreadcrumbView`、`ActionsView` 各自独立文件。
 3. **补单元测试** — 覆盖：布局面积守恒、聚合阈值逻辑、`getattrlistbulk` buffer 解析、`findRectangleAt` hit-test。
 4. **详情面板点击冲突修复** — 外层 `.onTapGesture` 吞掉内部按钮点击，改用背景遮罩或显式按钮命中区。
 

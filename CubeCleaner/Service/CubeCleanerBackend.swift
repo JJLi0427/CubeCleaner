@@ -852,7 +852,7 @@ class BinaryTreeMapCalculator: ObservableObject {
      * 规则：
      * 1. 移除大小为0的节点
      * 2. 按大小降序排序
-     * 3. 阈值 = 父目录总大小 × aggregateRatio (0.5%)
+     * 3. 阈值 = 父目录总大小 × minFileRatio (0.5%)
      * 4. 保留所有 >= 阈值的子项
      * 5. 剩余子项聚合为一个虚拟"其他"节点（面积守恒）
      * 6. 边界：若全部 < 阈值，不聚合，保留前 10 大，避免空图

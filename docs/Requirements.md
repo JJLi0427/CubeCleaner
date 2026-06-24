@@ -131,7 +131,7 @@ Create a macOS application that provides intuitive visual representation of disk
 - **NF-005**: Localization support for multiple languages
 
 ### 3.2 Compatibility Requirements
-- **NF-006**: macOS 13.0 (Ventura) or later
+- **NF-006**: macOS 15.5 or later
 - **NF-007**: Support Intel and Apple Silicon Macs
 - **NF-008**: Compatible with various file systems (APFS, HFS+, exFAT)
 - **NF-009**: Handle network volumes and external drives
@@ -152,7 +152,7 @@ Create a macOS application that provides intuitive visual representation of disk
 
 ### 4.1 Development Constraints
 - **TC-001**: Use Swift and SwiftUI as primary technologies
-- **TC-002**: Minimum deployment target: macOS 13.0
+- **TC-002**: Minimum deployment target: macOS 15.5 or later
 - **TC-003**: Use Xcode 15.0 or later for development
 - **TC-004**: Follow Apple's App Store Review Guidelines
 - **TC-005**: Implement proper code signing and notarization
