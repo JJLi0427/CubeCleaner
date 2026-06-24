@@ -485,6 +485,40 @@ class ColorSchemeManager: ObservableObject {
 
         return baseColor.opacity(0.7)
     }
+
+    /// 类型占比条目（供统计条比例条与图例侧栏共用）
+    struct TypeBreakdownEntry: Identifiable {
+        let id = UUID()
+        let type: FileType
+        let size: Int64
+        let color: Color
+        var ratio: CGFloat {      // size / total；total=0 时外部不渲染
+            total > 0 ? CGFloat(size) / CGFloat(total) : 0
+        }
+        let total: Int64
+    }
+
+    /// 聚合 node 子树所有叶子文件，按 FileType 累加 item.size。
+    /// 文件夹不计入（避免与子文件重复）。返回 8 类型（含 size=0），按 size 降序。
+    func typeBreakdown(for node: TreeNode) -> [TypeBreakdownEntry] {
+        var sizes: [FileType: Int64] = [:]
+        for type in FileType.allCases { sizes[type] = 0 }
+
+        func traverse(_ current: TreeNode) {
+            if current.item.isDirectory {
+                for child in current.children { traverse(child) }
+            } else {
+                let ft = FileType.from(extension: current.item.fileExtension)
+                sizes[ft, default: 0] += current.item.size
+            }
+        }
+        traverse(node)
+
+        let total = sizes.values.reduce(Int64(0), +)
+        return FileType.allCases
+            .map { TypeBreakdownEntry(type: $0, size: sizes[$0] ?? 0, color: color(for: $0), total: total) }
+            .sorted { $0.size > $1.size }
+    }
 }
 
 // MARK: TreeMapRectangle - TreeMap矩形结构
