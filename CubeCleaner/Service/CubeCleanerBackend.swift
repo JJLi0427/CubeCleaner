@@ -321,6 +321,14 @@ class TreeNode: ObservableObject, Identifiable, Equatable {
     @Published var children: [TreeNode] = []
     @Published var isExpanded: Bool = false
 
+    /// 是否为聚合的虚拟"其他"节点
+    private(set) var isAggregated: Bool = false
+
+    /// 标记为聚合节点
+    func markAsAggregated() {
+        isAggregated = true
+    }
+
     /// 节点在树中的层级深度
     var level: Int {
         (parent?.level ?? -1) + 1
@@ -494,6 +502,7 @@ struct TreeMapRectangle: Identifiable {
     let rect: CGRect
     let color: Color
     let level: Int
+    let isAggregated: Bool  // 是否为聚合的"其他"块
 
     /**
      * 是否显示标签的判断逻辑
@@ -604,7 +613,7 @@ class BinaryTreeMapCalculator: ObservableObject {
     private let colorSchemeManager = ColorSchemeManager.shared
     private let minVisibleSize: CGFloat = 24  // 最小可见尺寸：24x24像素，用户能看清
     private let maxDepth: Int = 8  // 限制递归深度，避免过度分割
-    private let minFileRatio: Double = 0.01  // 文件大小阈值：小于总大小1%的文件合并显示
+    private let minFileRatio: Double = 0.005  // 聚合阈值：小于总大小0.5%的文件归入"其他"块
 
     // MARK: - 全局状态 - 一个变量搞定颜色
     private var globalMaxSize: Int64 = 0
@@ -838,43 +847,65 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /**
-     * 获取有效子节点 - 智能过滤策略
+     * 获取有效子节点 - 聚合"其他"块策略
      *
-     * 过滤规则：
-     * 1. 大小为0的节点（无意义）
-     * 2. 小于总大小1%的文件（太小了，合并处理）
-     * 3. 保留至少前10大的文件（避免全部被过滤）
+     * 规则：
+     * 1. 移除大小为0的节点
+     * 2. 按大小降序排序
+     * 3. 阈值 = 父目录总大小 × aggregateRatio (0.5%)
+     * 4. 保留所有 >= 阈值的子项
+     * 5. 剩余子项聚合为一个虚拟"其他"节点（面积守恒）
+     * 6. 边界：若全部 < 阈值，不聚合，保留前 10 大，避免空图
      */
     private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
-        // 基础过滤：移除空文件
         let nonZeroChildren = children.filter { $0.totalSize > 0 }
-
         guard !nonZeroChildren.isEmpty else { return [] }
 
-        // 如果子节点不多，直接返回
+        // 子节点不多，直接返回
         if nonZeroChildren.count <= 5 {
             return nonZeroChildren
         }
 
-        // 计算总大小
-        let totalSize = nonZeroChildren.reduce(0) { $0 + $1.totalSize }
-        let sizeThreshold = Int64(Double(totalSize) * minFileRatio)
-
-        // 按大小排序，保留重要文件
         let sortedChildren = nonZeroChildren.sorted { $0.totalSize > $1.totalSize }
+        let totalSize = sortedChildren.reduce(Int64(0)) { $0 + $1.totalSize }
+        let threshold = Int64(Double(totalSize) * minFileRatio)
 
-        // 保留策略：
-        // 1. 前10大文件无条件保留
-        // 2. 其他文件必须超过阈值
-        var result: [TreeNode] = []
+        // 分离保留项与待聚合项
+        var kept: [TreeNode] = []
+        var aggregatedChildren: [TreeNode] = []
 
-        for (index, child) in sortedChildren.enumerated() {
-            if index < 10 || child.totalSize >= sizeThreshold {
-                result.append(child)
+        for child in sortedChildren {
+            if child.totalSize >= threshold {
+                kept.append(child)
+            } else {
+                aggregatedChildren.append(child)
             }
         }
 
-        return result.isEmpty ? [sortedChildren[0]] : result
+        // 边界：若全部 < 阈值（即 kept 为空），保留前 10 大，不聚合
+        if kept.isEmpty {
+            return Array(sortedChildren.prefix(10))
+        }
+
+        // 没有可聚合的小文件，直接返回
+        if aggregatedChildren.isEmpty {
+            return kept
+        }
+
+        // 构造虚拟"其他"节点
+        let aggregatedSize = aggregatedChildren.reduce(Int64(0)) { $0 + $1.totalSize }
+        let otherItem = FileSystemItem(
+            name: "其他 (\(aggregatedChildren.count) 项)",
+            path: URL(fileURLWithPath: "/__aggregated__"),
+            size: aggregatedSize,
+            isDirectory: false,
+            creationDate: Date(timeIntervalSince1970: 0),
+            modificationDate: Date(timeIntervalSince1970: 0)
+        )
+        let otherNode = TreeNode(item: otherItem, parent: nil)
+        otherNode.markAsAggregated()
+
+        return kept + [otherNode]
     }
 
     /**
@@ -895,12 +926,19 @@ class BinaryTreeMapCalculator: ObservableObject {
     /**
      * 创建叶子矩形 - 就是包装一下数据
      */
-    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int) -> TreeMapRectangle {
+    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int, isAggregated: Bool = false) -> TreeMapRectangle {
+        let color: Color
+        if node.isAggregated {
+            color = Color(.systemGray).opacity(0.5)
+        } else {
+            color = colorSchemeManager.adjustedColor(for: node, maxSize: globalMaxSize)
+        }
         return TreeMapRectangle(
             node: node,
             rect: rect,
-            color: colorSchemeManager.adjustedColor(for: node, maxSize: globalMaxSize),
-            level: depth
+            color: color,
+            level: depth,
+            isAggregated: node.isAggregated
         )
     }
 }
