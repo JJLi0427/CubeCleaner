@@ -42,38 +42,38 @@ Launch Screen → Disk Selection → Scanning Progress → Main Interface
 
 ### 3.1 Main Window Layout
 
-#### 3.1.1 Window Structure
+#### 3.1.1 Window Structure (v0.2 实际布局)
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ File  Edit  View  Scan  Window  Help                       │ Menu Bar
+│ [选择文件夹] [取消扫描]              已选择:xxx 文件数:xxx │ 工具栏
 ├─────────────────────────────────────────────────────────────┤
-│ [Scan] [Refresh] [Filter] [Export] [Settings]              │ Toolbar
+│ 根 > 子目录 > ...                                (面包屑)   │
 ├─────────────────────────────────────────────────────────────┤
-│ ┌─Sidebar─┐ │ ┌──────── TreeMap View ────────┐ ┌Inspector┐ │
-│ │ Volumes  │ │ │                              │ │ Details │ │
-│ │ ├ Disk1  │ │ │    ┌─────┐ ┌──┐ ┌─────────┐ │ │ ┌─────┐ │ │
-│ │ ├ Disk2  │ │ │    │     │ │  │ │         │ │ │ │File │ │ │
-│ │ └ USB    │ │ │    │     │ │  │ │         │ │ │ │Info │ │ │
-│ │          │ │ │    └─────┘ └──┘ └─────────┘ │ │ └─────┘ │ │
-│ │ Filters  │ │ │                              │ │        │ │
-│ │ ├ Size   │ │ │    ┌───────────────────────┐ │ │ Colors │ │
-│ │ ├ Type   │ │ │    │                       │ │ │ ┌─────┐ │ │
-│ │ └ Date   │ │ │    │                       │ │ │ │     │ │ │
-│ │          │ │ │    └───────────────────────┘ │ │ └─────┘ │ │
-│ └──────────┘ │ └──────────────────────────────┘ └─────────┘ │
+│ ┌──────── TreeMap Canvas ──────────────┐ ┌─详情浮层──────┐ │
+│ │  ┌─────┐ ┌──┐ ┌─────────┐            │ │ 文件详情      │ │
+│ │  │     │ │  │ │         │            │ │ 大小/类型/路径│ │
+│ │  └─────┘ └──┘ └─────────┘            │ │ 子项目列表    │ │
+│ │  ┌──────────────────────┐ [其他 N 项] │ │ [Finder显示] │ │
+│ │  │                      │             │ └───────────────┘ │
+│ │  └──────────────────────┘             │                   │
+│ └────────────────────────────────────────┘                   │
 ├─────────────────────────────────────────────────────────────┤
-│ Scanning: /Users/username/Documents... 47% │ 2.3GB scanned │ Status Bar
+│ 总大小: xxx                          文件数: xxx            │ 状态栏
 └─────────────────────────────────────────────────────────────┘
 ```
+- 单 Canvas 居中，详情面板为浮层（点击矩形弹出）。
+- 面包屑浮于 Canvas 顶部。
+- 无 Sidebar / Inspector 双侧栏（计划中，见 NEXT_STEPS）。
 
 #### 3.1.2 Responsive Layout
-- **Minimum Width**: 1000px
-- **Minimum Height**: 700px
-- **Sidebar**: Collapsible, 200-300px width
-- **Inspector**: Toggleable, 250px width
-- **TreeMap**: Expandable main content area
+- **Minimum Width**: 由 SwiftUI 默认窗口约束
+- **详情浮层**: maxWidth 500，点击空白或 × 关闭
+- **TreeMap Canvas**: 占据主内容区，resize 时 0.3s 防抖重算
+- **面包屑**: 水平滚动，超长不换行
 
-### 3.2 Menu Bar Structure
+### 3.2 Menu Bar Structure (计划中)
+
+> v0.2 尚未实现菜单栏与快捷键系统，以下为目标设计：
 
 #### 3.2.1 File Menu
 ```
@@ -126,22 +126,15 @@ View
 └── Full Screen                   ⌃⌘F
 ```
 
-### 3.3 Toolbar Design
-
-#### 3.3.1 Primary Actions
+### 3.3 Toolbar Design (v0.2 实际)
 ```
-[📁 Scan] [🔄 Refresh] [🔍 Search] [⚙️ Filter] [📊 Export] [⚙️ Settings]
+[选择文件夹]  [取消扫描(扫描中显示)]        状态信息(右对齐)
 ```
-
-#### 3.3.2 Toolbar Items Specification
-| Icon | Label | Action | Shortcut |
-|------|-------|---------|----------|
-| 📁 | Scan | Open folder selection dialog | ⌘N |
-| 🔄 | Refresh | Rescan current directory | ⌘R |
-| 🔍 | Search | Open search panel | ⌘F |
-| ⚙️ | Filter | Toggle filter panel | ⌘⇧F |
-| 📊 | Export | Export current view | ⌘E |
-| ⚙️ | Settings | Open preferences | ⌘, |
+| 控件 | 行为 |
+|------|------|
+| 选择文件夹 | 弹出文件选择器，选目录后开始扫描 |
+| 取消扫描 | 仅扫描中显示，取消当前 Task |
+| 状态信息 | 显示已选目录名、文件数、总大小 |
 
 ### 3.4 Sidebar Components
 
@@ -220,13 +213,17 @@ Other:       Light Gray (#C7C7CC)
 > 1GB:       Red (#FF3B30)
 ```
 
-#### 3.5.3 Interactive Elements
-- **Click**: Navigate into folder
-- **Right-click**: Context menu
-- **Hover**: Show tooltip with file details
-- **Double-click**: Open file/reveal in Finder
-- **Cmd+click**: Multi-select
-- **Scroll**: Zoom in/out
+#### 3.5.3 Interactive Elements (v0.2 已实现)
+- **单击**: 选中文件/文件夹，弹出详情面板
+- **双击**: 进入子目录（切换布局根）
+- **长按**: 在 Finder 中显示
+- **悬停**: 矩形高亮（透明度变化）
+
+#### 计划中的交互
+- 右键上下文菜单
+- 滚轮/双指缩放平移
+- Cmd+click 多选
+- Quick Look 预览 (Space)
 
 ### 3.6 Inspector Panel
 
