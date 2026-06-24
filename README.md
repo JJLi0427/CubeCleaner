@@ -4,16 +4,17 @@ A macOS disk usage visualization application built with Swift and SwiftUI, inspi
 
 **当前状态：v0.2-beta，基础扫描与 TreeMap 可视化可用。**
 
-## Features
+## Features (v0.2)
 
-- 🗂️ **Visual Disk Analysis**: Tree map visualization showing files as rectangles proportional to their size
-- 🎨 **Flexible Color Coding**: Color files by type, extension, size, date, or folder hierarchy
-- 🔍 **Advanced Filtering**: Filter by file size, type, date, and custom criteria
-- 📊 **Multiple Views**: Support for multiple simultaneous views and comparisons
-- 💾 **Save & Export**: Save scan results and export as images or data files
-- ⚡ **High Performance**: Optimized scanning and rendering for large file systems
-- 🖱️ **Interactive Navigation**: Mouse and keyboard navigation with zoom and pan
-- 🔗 **System Integration**: Quick Look preview, Finder integration, and file operations
+- 🗂️ **Visual Disk Analysis**: TreeMap 可视化，矩形面积与文件大小成比例
+- 🧩 **小文件聚合**: 低于阈值的文件自动归入"其他"块，面积守恒，无过细矩形
+- 🎨 **按类型配色**: 文件按类型（文档/图片/视频/音频/压缩包/应用/系统）着色
+- 🖱️ **基础交互**: 单击查看详情、双击进入子目录、长按在 Finder 中显示、悬停高亮
+- 🧭 **面包屑导航**: 显示当前路径，点击任意层级快速返回
+- ⚡ **批量扫描**: 使用 `getattrlistbulk` 批量读取文件属性，`FileManager` 回退
+- 🖥️ **Canvas 渲染**: 一次性绘制所有矩形，窗口缩放防抖重算
+
+> 以下为规划中功能（见 Roadmap 与 NEXT_STEPS）：文件名/类型/大小/日期过滤、多视图、保存与导出（PNG/CSV/JSON）、删除/移到废纸篓、缩放平移、Quick Look 预览、键盘快捷键。
 
 ## Documentation
 
@@ -73,7 +74,7 @@ CubeCleaner/
 
 ### Phase 2: Visualization ✅ (v0.2)
 - [x] TreeMap 布局算法 (二分法 + 聚合"其他"块)
-- [x] Canvas 矩阵渲染
+- [x] Canvas 矩形渲染
 - [x] 颜色方案 (按文件类型)
 - [x] 交互式导航 (双击进入子目录)
 
