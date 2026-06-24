@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selectedPath: URL?
     @State private var hoveredNode: TreeNode?
     @State private var selectedNode: TreeNode?
+    @State private var currentRoot: TreeNode?
     @State private var showingDetails = false
     @State private var showingFilePicker = false
 
@@ -106,6 +107,14 @@ struct ContentView: View {
                                     rectangle.node.item.path.path,
                                     inFileViewerRootedAtPath: ""
                                 )
+                            },
+                            onDoubleTap: { rectangle in
+                                if rectangle.node.item.isDirectory && !rectangle.node.isAggregated {
+                                    currentRoot = rectangle.node
+                                    Task {
+                                        await updateLayoutOptimized(size: geometry.size)
+                                    }
+                                }
                             }
                         )
                         .clipped()
@@ -172,7 +181,8 @@ struct ContentView: View {
                 .onChange(of: geometry.size) { _, newSize in
                     handleGeometryChange(newSize: newSize)
                 }
-                .onChange(of: fileSystemService.rootNode) { _, _ in
+                .onChange(of: fileSystemService.rootNode) { _, newNode in
+                    currentRoot = newNode
                     Task {
                         await updateLayoutOptimized(size: geometry.size)
                     }
@@ -260,7 +270,7 @@ struct ContentView: View {
      * 优化的异步布局更新方法
      */
     private func updateLayoutOptimized(size: CGSize) async {
-        guard let rootNode = fileSystemService.rootNode,
+        guard let rootNode = currentRoot ?? fileSystemService.rootNode,
             size.width > 0,
             size.height > 0
         else {
@@ -310,6 +320,7 @@ struct TreeMapCanvasView: View {
     let rectangles: [TreeMapRectangle]
     let onTap: (TreeMapRectangle) -> Void
     let onLongPress: (TreeMapRectangle) -> Void
+    let onDoubleTap: (TreeMapRectangle) -> Void
 
     @State private var hoveredRectangle: TreeMapRectangle?
 
@@ -322,10 +333,9 @@ struct TreeMapCanvasView: View {
         }
         .gesture(
             // 统一的点击手势处理 - 手动计算点击位置
-            DragGesture(minimumDistance: 0)
+            SpatialTapGesture()
                 .onEnded { value in
-                    let location = value.location
-                    if let hitRectangle = findRectangleAt(location) {
+                    if let hitRectangle = findRectangleAt(value.location) {
                         onTap(hitRectangle)
                     }
                 }
@@ -344,6 +354,17 @@ struct TreeMapCanvasView: View {
                         }
                     default:
                         break
+                    }
+                }
+        )
+        .onTapGesture(count: 2) { _ in
+            // 双击由 DragGesture 的 location 无法直接拿到，改用 spatialTapGesture
+        }
+        .gesture(
+            SpatialTapGesture(count: 2)
+                .onEnded { value in
+                    if let hitRectangle = findRectangleAt(value.location) {
+                        onDoubleTap(hitRectangle)
                     }
                 }
         )
