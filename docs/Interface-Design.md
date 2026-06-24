@@ -20,13 +20,12 @@ CubeCleaner follows Apple's Human Interface Guidelines with a focus on:
 ### 2.1 Window Hierarchy
 ```
 MainWindow
-├── MenuBar
-├── Toolbar
+├── Toolbar (选择文件夹 / 取消扫描 / 状态信息)
 ├── ContentView
-│   ├── Sidebar (File Navigator)
-│   ├── VisualizationView (TreeMap)
-│   └── InspectorPanel
-└── StatusBar
+│   ├── BreadcrumbView (浮于顶部)
+│   ├── TreeMapCanvasView (Canvas 渲染)
+│   └── DetailsPanelView (点击矩形弹出浮层)
+└── StatusBar (总大小 / 文件数)
 ```
 
 ### 2.2 Navigation Flow
