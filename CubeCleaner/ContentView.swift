@@ -719,6 +719,41 @@ struct MetricBlock: View {
     }
 }
 
+// MARK: - 类型占比比例条
+struct TypeRatioBarView: View {
+    let entries: [ColorSchemeManager.TypeBreakdownEntry]
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                HStack(spacing: 0) {
+                    ForEach(entries.filter { $0.size > 0 }) { entry in
+                        entry.color
+                            .frame(width: geo.size.width * entry.ratio)
+                    }
+                }
+                .clipShape(Capsule())
+            }
+        }
+        .frame(height: 10)
+        .help(tooltipText)
+    }
+
+    /// 整条 tooltip（首版不分区段命中）
+    private var tooltipText: String {
+        guard !entries.isEmpty else { return "无数据" }
+        let total = entries.first?.total ?? 0
+        return entries
+            .filter { $0.size > 0 }
+            .map { e in
+                let pct = total > 0 ? Int(Double(e.size) / Double(total) * 100) : 0
+                return "\(e.type.displayName) \(ByteCountFormatter.string(fromByteCount: e.size, countStyle: .file)) \(pct)%"
+            }
+            .joined(separator: "\n")
+    }
+}
+
 #Preview {
     ContentView()
         .frame(width: 800, height: 600)
