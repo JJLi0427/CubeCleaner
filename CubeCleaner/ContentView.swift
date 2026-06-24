@@ -385,7 +385,15 @@ struct TreeMapCanvasView: View {
                     }
                 }
         )
-        .onHover { _ in }  // 保持悬停检测接口
+        .onContinuousHover { phase in
+            // 复活悬停高亮：根据鼠标位置实时更新 hoveredRectangle
+            switch phase {
+            case .active(let location):
+                hoveredRectangle = findRectangleAt(location)
+            case .ended:
+                hoveredRectangle = nil
+            }
+        }
     }
 
     /**
@@ -461,135 +469,6 @@ struct TreeMapCanvasView: View {
             }
         }
         return nil
-    }
-}
-
-struct TreeMapRectangleView: View {
-    let rectangle: TreeMapRectangle
-    let onTap: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Rectangle()
-            .fill(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
-            .stroke(
-                rectangle.isImportant ? Color.primary.opacity(0.4) : Color.primary.opacity(0.2),
-                lineWidth: rectangle.isImportant ? 1.5 : 0.5
-            )
-            .shadow(
-                color: .black.opacity(isHovered ? 0.3 : 0.1),
-                radius: isHovered ? 3 : 1
-            )
-            .overlay {
-                // 内容标签
-                if rectangle.shouldShowLabel {
-                    VStack(spacing: 2) {
-                        // 文件/文件夹名称
-                        if !rectangle.displayName.isEmpty {
-                            Text(rectangle.displayName)
-                                .font(.system(size: min(11, rectangle.rect.height / 4)))
-                                .fontWeight(rectangle.isImportant ? .semibold : .medium)
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
-                                .multilineTextAlignment(.center)
-                        }
-
-                        // 大小信息
-                        if rectangle.canShowSize {
-                            Text(rectangle.formattedSize)
-                                .font(.system(size: min(9, rectangle.rect.height / 6)))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-
-                        // 详细信息（文件夹子项数量）
-                        if rectangle.canShowDetails && rectangle.node.item.isDirectory {
-                            Text(rectangle.childrenDescription)
-                                .font(.system(size: min(8, rectangle.rect.height / 8)))
-                                .foregroundColor(.secondary.opacity(0.8))
-                                .lineLimit(1)
-                        }
-                    }
-                    .padding(2)
-                    .frame(maxWidth: rectangle.rect.width - 4, maxHeight: rectangle.rect.height - 4)
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                // 文件类型图标（仅对重要文件显示）
-                if rectangle.isImportant && !rectangle.node.item.isDirectory
-                    && rectangle.rect.width > 30 && rectangle.rect.height > 30
-                {
-                    Image(systemName: iconForFileType(rectangle.node.item.fileExtension))
-                        .font(.system(size: min(12, rectangle.rect.width / 8)))
-                        .foregroundColor(.primary.opacity(0.6))
-                        .padding(4)
-                }
-            }
-            .frame(width: rectangle.rect.width, height: rectangle.rect.height)
-            .position(
-                x: rectangle.rect.minX + rectangle.rect.width / 2,
-                y: rectangle.rect.minY + rectangle.rect.height / 2
-            )
-            .contentShape(Rectangle())  // 确保整个矩形区域都可点击
-            .onTapGesture {
-                onTap()
-            }
-            .onLongPressGesture {
-                // 长按打开文件或文件夹
-                NSWorkspace.shared.selectFile(
-                    rectangle.node.item.path.path,
-                    inFileViewerRootedAtPath: ""
-                )
-            }
-            .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isHovered = hovering
-                }
-            }
-            .help(makeTooltipText())
-    }
-
-    /**
-     * 根据文件扩展名返回合适的图标
-     */
-    private func iconForFileType(_ extension: String) -> String {
-        let ext = `extension`.lowercased()
-        switch ext {
-        case "jpg", "jpeg", "png", "gif", "bmp", "tiff", "svg", "webp", "heic":
-            return "photo"
-        case "mp4", "mov", "avi", "mkv", "wmv", "flv", "m4v":
-            return "play.rectangle"
-        case "mp3", "wav", "aac", "flac", "ogg", "m4a":
-            return "music.note"
-        case "pdf":
-            return "doc.richtext"
-        case "txt", "md":
-            return "doc.text"
-        case "zip", "rar", "7z", "tar", "gz":
-            return "archivebox"
-        case "app":
-            return "app"
-        case "dmg":
-            return "externaldrive"
-        default:
-            return "doc"
-        }
-    }
-
-    /**
-     * 生成工具提示文本
-     */
-    private func makeTooltipText() -> String {
-        var tooltip = "\(rectangle.node.item.name)\n"
-        tooltip += "大小: \(rectangle.formattedSize)\n"
-        tooltip += "类型: \(rectangle.node.item.isDirectory ? "文件夹" : "文件")\n"
-
-        if rectangle.node.item.isDirectory && !rectangle.node.children.isEmpty {
-            tooltip += "包含: \(rectangle.node.children.count) 项\n"
-        }
-
-        tooltip += "路径: \(rectangle.node.item.path.path)"
-        return tooltip
     }
 }
 
