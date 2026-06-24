@@ -984,6 +984,7 @@ class FileSystemService: ObservableObject {
     @Published var scanProgress: Double = 0.0
     @Published var currentPath: String = ""
     @Published var filesScanned: Int = 0
+    @Published var folderCount: Int = 0
     @Published var totalSize: Int64 = 0
     @Published var rootNode: TreeNode?
     @Published var errorMessage: String?
@@ -1025,6 +1026,7 @@ class FileSystemService: ObservableObject {
         isScanning = true
         scanProgress = 0.0
         filesScanned = 0
+        folderCount = 0
         totalSize = 0
         currentPath = ""
         errorMessage = nil
@@ -1164,6 +1166,7 @@ class FileSystemService: ObservableObject {
 
             // 递归扫描子目录
             if item.isDirectory {
+                folderCount += 1
                 await scanRecursively(node: childNode, currentDepth: currentDepth + 1)
             }
         }
@@ -1211,6 +1214,7 @@ class FileSystemService: ObservableObject {
 
                     // 递归扫描子目录
                     if item.isDirectory {
+                        folderCount += 1
                         await scanRecursivelyFallback(
                             node: childNode, currentDepth: currentDepth + 1)
                     }
