@@ -73,6 +73,23 @@ struct ContentView: View {
                 ZStack {
                     Color(.controlBackgroundColor)
 
+                    // 面包屑导航 - 浮于 TreeMap 顶部，不挤压可视空间
+                    VStack {
+                        BreadcrumbView(
+                            currentRoot: currentRoot,
+                            onSelect: { node in
+                                currentRoot = node
+                                Task {
+                                    await updateLayoutOptimized(size: geometry.size)
+                                }
+                            }
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial)
+                        Spacer()
+                    }
+
                     if rectangles.isEmpty && !fileSystemService.isScanning && !isResizing
                         && !isLayouting
                     {
@@ -726,6 +743,44 @@ struct ActionsView: View {
                 }
                 .buttonStyle(.bordered)
             }
+        }
+    }
+}
+
+// MARK: - 面包屑导航视图
+struct BreadcrumbView: View {
+    let currentRoot: TreeNode?
+    let onSelect: (TreeNode) -> Void
+
+    /// 从扫描根到 currentRoot 的路径
+    private var path: [TreeNode] {
+        var nodes: [TreeNode] = []
+        var current: TreeNode? = currentRoot
+        while let node = current {
+            nodes.insert(node, at: 0)
+            current = node.parent
+        }
+        return nodes
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(Array(path.enumerated()), id: \.element.id) { index, node in
+                    if index > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Button(action: { onSelect(node) }) {
+                        Text(node.item.name)
+                            .font(.caption)
+                            .foregroundColor(index == path.count - 1 ? .primary : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
         }
     }
 }
