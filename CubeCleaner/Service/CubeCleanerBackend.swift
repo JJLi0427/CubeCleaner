@@ -436,20 +436,20 @@ enum FileType: String, CaseIterable {
 class ColorSchemeManager: ObservableObject {
     static let shared = ColorSchemeManager()
 
-    /// 文件类型颜色映射表
+    /// 高饱和调色板（v0.3）— 固定 RGB，不做亮/暗分别调色
     private let fileTypeColors: [FileType: Color] = [
-        .document: .blue,
-        .image: .green,
-        .video: .red,
-        .audio: .purple,
-        .archive: .orange,
-        .application: .gray,
-        .system: .yellow,
-        .other: Color(.systemGray),
+        .document: Color(red: 0.039, green: 0.518, blue: 1.0),     // #0A84FF
+        .image: Color(red: 0.188, green: 0.820, blue: 0.345),      // #30D158
+        .video: Color(red: 1.0, green: 0.271, blue: 0.227),        // #FF453A
+        .audio: Color(red: 0.749, green: 0.353, blue: 0.949),      // #BF5AF2
+        .archive: Color(red: 1.0, green: 0.624, blue: 0.039),      // #FF9F0A
+        .application: Color(red: 0.392, green: 0.824, blue: 1.0),  // #64D2FF
+        .system: Color(red: 1.0, green: 0.839, blue: 0.039),       // #FFD60A
+        .other: Color(red: 1.0, green: 0.216, blue: 0.373),        // #FF375F
     ]
 
-    /// 文件夹专用颜色
-    private let directoryColor: Color = .brown
+    /// 文件夹专用颜色（高饱和深青）
+    private let directoryColor: Color = Color(red: 0.251, green: 0.784, blue: 0.878)  // #40C8E0
 
     private init() {}
 
