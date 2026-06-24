@@ -1,5 +1,9 @@
 # CubeCleaner - Requirements Documentation
 
+> **实现状态对照（截至 v0.2-beta）**
+> 每条需求后附标记：✅ 完成 / ⚠️ 部分完成 / ❌ 未实现。
+> 关键差距：FR-006 硬链接(❌)、FR-031 删除(❌)、PR-003 后台扫描不阻塞UI(⚠️)、PR-005 内存<500MB(⚠️)。
+
 ## 1. Project Overview
 
 **Project Name:** CubeCleaner  
@@ -15,68 +19,68 @@ Create a macOS application that provides intuitive visual representation of disk
 ### 2.1 Core Features
 
 #### 2.1.1 Disk Scanning
-- **FR-001**: Scan entire volumes or selected directories
-- **FR-002**: Recursively traverse directory structures
-- **FR-003**: Calculate file and folder sizes accurately
-- **FR-004**: Handle system files and permissions appropriately
-- **FR-005**: Support scanning of Time Machine backups
-- **FR-006**: Handle hard-linked files and folders correctly
+- **FR-001**: Scan entire volumes or selected directories ✅
+- **FR-002**: Recursively traverse directory structures ✅
+- **FR-003**: Calculate file and folder sizes accurately ✅
+- **FR-004**: Handle system files and permissions appropriately ⚠️ (有权限拒绝回退，但无统一错误处理)
+- **FR-005**: Support scanning of Time Machine backups ❌
+- **FR-006**: Handle hard-linked files and folders correctly ❌ (硬链接会重复计算)
 
 #### 2.1.2 Visualization (Tree Map)
-- **FR-007**: Display files as rectangles with area proportional to file size
-- **FR-008**: Group files within the same folder together
-- **FR-009**: Provide smooth zooming and panning capabilities
-- **FR-010**: Support animated transitions when navigating
-- **FR-011**: Implement responsive drawing optimized for performance
+- **FR-007**: Display files as rectangles with area proportional to file size ✅
+- **FR-008**: Group files within the same folder together ✅
+- **FR-009**: Provide smooth zooming and panning capabilities ❌
+- **FR-010**: Support animated transitions when navigating ⚠️ (有 layout 动画，无导航过渡)
+- **FR-011**: Implement responsive drawing optimized for performance ✅ (Canvas + resize 防抖)
 
 #### 2.1.3 Color Coding System
-- **FR-012**: Color files by name patterns
-- **FR-013**: Color files by extension
-- **FR-014**: Color files by file type
-- **FR-015**: Color files by parent folder
-- **FR-016**: Color files by top-level folder
-- **FR-017**: Color files by hierarchy level
-- **FR-018**: Color files by creation time
-- **FR-019**: Color files by modification time
-- **FR-020**: Color files by last access time
-- **FR-021**: Provide multiple color palette options
-- **FR-022**: Allow custom color mapping configuration
+- **FR-012**: Color files by name patterns ❌
+- **FR-013**: Color files by extension ❌
+- **FR-014**: Color files by file type ✅
+- **FR-015**: Color files by parent folder ❌
+- **FR-016**: Color files by top-level folder ❌
+- **FR-017**: Color files by hierarchy level ❌
+- **FR-018**: Color files by creation time ❌
+- **FR-019**: Color files by modification time ❌
+- **FR-020**: Color files by last access time ❌
+- **FR-021**: Provide multiple color palette options ❌
+- **FR-022**: Allow custom color mapping configuration ❌
 
 #### 2.1.4 Navigation and Interaction
-- **FR-023**: Navigate using mouse interactions (click, scroll, drag)
-- **FR-024**: Navigate using keyboard shortcuts
-- **FR-025**: Provide breadcrumb navigation
-- **FR-026**: Support traversing up and down folder hierarchy
-- **FR-027**: Allow selection of files and folders in the view
-- **FR-028**: Implement search functionality by file name
-- **FR-029**: Support Quick Look preview integration
-- **FR-030**: Reveal files/folders in Finder
-- **FR-031**: Delete files/folders directly from the view
+- **FR-023**: Navigate using mouse interactions (click, scroll, drag) ⚠️ (点击/双击/长按有，无滚轮缩放拖动)
+- **FR-024**: Navigate using keyboard shortcuts ❌
+- **FR-025**: Provide breadcrumb navigation ✅
+- **FR-026**: Support traversing up and down folder hierarchy ✅ (双击进入 + 面包屑返回)
+- **FR-027**: Allow selection of files and folders in the view ✅
+- **FR-028**: Implement search functionality by file name ❌
+- **FR-029**: Support Quick Look preview integration ❌
+- **FR-030**: Reveal files/folders in Finder ✅
+- **FR-031**: Delete files/folders directly from the view ❌ (沙盒只读)
 
 #### 2.1.5 Filtering System
-- **FR-032**: Filter by file name patterns
-- **FR-033**: Filter by file path
-- **FR-034**: Filter by file size ranges
-- **FR-035**: Filter by file type
-- **FR-036**: Filter by hard-link status
-- **FR-037**: Filter by package status
-- **FR-038**: Save and manage filter presets
-- **FR-039**: Apply filters to mask files in view
-- **FR-040**: Apply filters to exclude files during scanning
+- **FR-032**: Filter by file name patterns ❌
+- **FR-033**: Filter by file path ❌
+- **FR-034**: Filter by file size ranges ❌
+- **FR-035**: Filter by file type ❌
+- **FR-036**: Filter by hard-link status ❌
+- **FR-037**: Filter by package status ❌
+- **FR-038**: Save and manage filter presets ❌
+- **FR-039**: Apply filters to mask files in view ❌
+- **FR-040**: Apply filters to exclude files during scanning ❌
 
 #### 2.1.6 Multiple Views Support
-- **FR-041**: Support multiple simultaneous views
-- **FR-042**: Refresh existing views
-- **FR-043**: Rescan directories to compare before/after cleanup
-- **FR-044**: Twin/duplicate views for different display options
-- **FR-045**: Synchronize navigation between related views
+- **FR-041**: Support multiple simultaneous views ❌
+- **FR-042**: Refresh existing views ✅ (重新扫描)
+- **FR-043**: Rescan directories to compare before/after cleanup ⚠️ (可重扫，无对比视图)
+- **FR-044**: Twin/duplicate views for different display options ❌
+- **FR-045**: Synchronize navigation between related views ❌
 
 #### 2.1.7 Data Persistence
-- **FR-046**: Save scan results to disk
-- **FR-047**: Load previously saved scan results
-- **FR-048**: Export views as images (PNG, JPEG)
-- **FR-049**: Export data as text/CSV format
-- **FR-050**: Maintain user preferences across sessions
+- **FR-046**: Save scan results to disk ❌
+- **FR-047**: Load previously saved scan results ❌
+- **FR-048**: Export views as images (PNG, JPEG) ❌
+- **FR-049**: Export data as text/CSV format ❌
+- **FR-050**: Maintain user preferences across sessions ❌
 
 ### 2.2 User Interface Requirements
 
@@ -104,18 +108,18 @@ Create a macOS application that provides intuitive visual representation of disk
 ### 2.3 Performance Requirements
 
 #### 2.3.1 Scanning Performance
-- **PR-001**: Scan 100GB of data within 30 seconds (SSD)
-- **PR-002**: Support scanning drives with millions of files
-- **PR-003**: Background scanning without blocking UI
-- **PR-004**: Cancellable scanning operations
-- **PR-005**: Memory usage under 500MB for large datasets
+- **PR-001**: Scan 100GB of data within 30 seconds (SSD) ⚠️ (getattrlistbulk 批量扫描快，但未基准测试)
+- **PR-002**: Support scanning drives with millions of files ⚠️ (能扫但内存压力大)
+- **PR-003**: Background scanning without blocking UI ❌ (当前 @MainActor 同步 IO，会卡 UI)
+- **PR-004**: Cancellable scanning operations ✅
+- **PR-005**: Memory usage under 500MB for large datasets ❌ (整棵 TreeNode 树常驻内存)
 
 #### 2.3.2 Rendering Performance
-- **PR-006**: Smooth 60fps scrolling and zooming
-- **PR-007**: Render initial view within 2 seconds after scan
-- **PR-008**: Support views with 100,000+ visible rectangles
-- **PR-009**: Efficient redraw on window resize
-- **PR-010**: Background rendering threads
+- **PR-006**: Smooth 60fps scrolling and zooming ⚠️ (Canvas 渲染流畅，但无缩放)
+- **PR-007**: Render initial view within 2 seconds after scan ✅
+- **PR-008**: Support views with 100,000+ visible rectangles ⚠️ (聚合后矩形数大减，未压测上限)
+- **PR-009**: Efficient redraw on window resize ✅ (0.3s 防抖)
+- **PR-010**: Background rendering threads ✅ (Task.detached 算布局)
 
 ## 3. Non-Functional Requirements
 
