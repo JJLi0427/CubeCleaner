@@ -338,6 +338,7 @@ struct ContentView: View {
 // MARK: - TreeMap Canvas View (无层级问题的解决方案)
 struct TreeMapCanvasView: View {
     let rectangles: [TreeMapRectangle]
+    let highlightedFileType: FileType?
     let onTap: (TreeMapRectangle) -> Void
     let onLongPress: (TreeMapRectangle) -> Void
     let onDoubleTap: (TreeMapRectangle) -> Void
@@ -395,6 +396,14 @@ struct TreeMapCanvasView: View {
         }
     }
 
+    /// 当前矩形是否属于高亮类型（文件夹在存在高亮时视为不高亮）
+    private func isHighlighted(_ rectangle: TreeMapRectangle) -> Bool {
+        guard let highlightedFileType else { return true }
+        if rectangle.node.item.isDirectory { return false }
+        let ft = FileType.from(extension: rectangle.node.item.fileExtension)
+        return ft == highlightedFileType
+    }
+
     /**
      * 绘制单个矩形 - 直接Canvas绘制，无视图层级
      */
@@ -402,10 +411,13 @@ struct TreeMapCanvasView: View {
         let rect = rectangle.rect
         let isHovered = hoveredRectangle?.id == rectangle.id
 
-        // 绘制背景
+        // 绘制背景 - 高亮类型保持原色，其它降透
+        let dimmed = highlightedFileType != nil && !isHighlighted(rectangle)
+        let baseOpacity = isHovered ? 0.95 : 0.8
+        let opacity = dimmed ? baseOpacity * 0.2 : baseOpacity
         context.fill(
             Path(rect),
-            with: .color(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
+            with: .color(rectangle.color.opacity(opacity))
         )
 
         // 绘制边框
