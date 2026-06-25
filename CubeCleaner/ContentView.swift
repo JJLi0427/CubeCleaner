@@ -18,6 +18,11 @@ struct ContentView: View {
     @State private var showingDetails = false
     @State private var showingFilePicker = false
 
+    // v0.3: 图例侧栏 + 类型高亮 + 类型分布
+    @State private var showLegend: Bool = true
+    @State private var highlightedFileType: FileType? = nil
+    @State private var typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry] = []
+
     // 性能优化相关状态
     @State private var isResizing = false
     @State private var layoutTask: Task<Void, Never>?
@@ -46,47 +51,65 @@ struct ContentView: View {
 
                 Spacer()
 
-                // 状态信息
-                VStack(alignment: .trailing, spacing: 2) {
-                    if let selectedPath = selectedPath {
-                        Text("已选择: \(selectedPath.lastPathComponent)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    if fileSystemService.rootNode != nil {
-                        Text(
-                            "文件总数: \(fileSystemService.filesScanned) | 总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))"
-                        )
-                        .font(.caption2)
+                if let selectedPath = selectedPath {
+                    Text("已选择: \(selectedPath.lastPathComponent)")
+                        .font(.caption)
                         .foregroundColor(.secondary)
-                    }
+                        .lineLimit(1)
                 }
+
+                Button {
+                    showLegend.toggle()
+                } label: {
+                    Image(systemName: showLegend ? "sidebar.left" : "sidebar.right")
+                }
+                .buttonStyle(.bordered)
+                .help(showLegend ? "隐藏类型图例" : "显示类型图例")
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
 
             Divider()
 
-            // 主内容区域
-            GeometryReader { geometry in
-                ZStack {
-                    Color(.controlBackgroundColor)
+            // 统计条 + 类型比例条
+            if fileSystemService.rootNode != nil || fileSystemService.isScanning {
+                StatsBarView(
+                    totalSize: fileSystemService.totalSize,
+                    fileCount: fileSystemService.filesScanned,
+                    folderCount: fileSystemService.folderCount,
+                    isScanning: fileSystemService.isScanning
+                )
+                TypeRatioBarView(entries: typeBreakdown)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                    .background(Color(.controlBackgroundColor))
+                Divider()
+            }
 
-                    // 面包屑导航 - 浮于 TreeMap 顶部，不挤压可视空间
-                    VStack {
-                        BreadcrumbView(
+            // 主内容区域：Canvas + 图例侧栏
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    ZStack {
+                        Color(.controlBackgroundColor)
+
+                    // 导航条（返回按钮 + 面包屑）- 浮于 TreeMap 顶部
+                    VStack(spacing: 0) {
+                        NavigationBarView(
                             currentRoot: currentRoot,
-                            onSelect: { node in
+                            rootNode: fileSystemService.rootNode,
+                            onBack: {
+                                currentRoot = currentRoot?.parent
+                                Task {
+                                    await updateLayoutOptimized(size: geometry.size)
+                                }
+                            },
+                            onSelectBreadcrumb: { node in
                                 currentRoot = node
                                 Task {
                                     await updateLayoutOptimized(size: geometry.size)
                                 }
                             }
                         )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
-                        .background(.ultraThinMaterial)
                         Spacer()
                     }
                     .zIndex(1)
@@ -116,6 +139,7 @@ struct ContentView: View {
                         // TreeMap可视化 - 使用Canvas避免层级问题
                         TreeMapCanvasView(
                             rectangles: rectangles,
+                            highlightedFileType: highlightedFileType,
                             onTap: { rectangle in
                                 selectedNode = rectangle.node
                                 showingDetails = true
@@ -192,7 +216,28 @@ struct ContentView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                }
+
+                    // 详情面板（浮于 Canvas 之上的覆盖层）
+                    if showingDetails {
+                        DetailsPanelView(
+                            selectedNode: $selectedNode,
+                            showingDetails: $showingDetails,
+                            fileSystemService: fileSystemService
+                        )
+                    }
+                    }  // close ZStack
+
+                    // 图例侧栏
+                    if showLegend {
+                        LegendSidebarView(
+                            entries: typeBreakdown,
+                            highlightedFileType: highlightedFileType,
+                            onToggleHighlight: { type in
+                                highlightedFileType = (highlightedFileType == type) ? nil : type
+                            }
+                        )
+                    }
+                }  // close HStack
                 .onAppear {
                     Task {
                         await updateLayoutOptimized(size: geometry.size)
@@ -207,40 +252,27 @@ struct ContentView: View {
                         await updateLayoutOptimized(size: geometry.size)
                     }
                 }
-
-                // 详情面板
-                if showingDetails {
-                    DetailsPanelView(
-                        selectedNode: $selectedNode,
-                        showingDetails: $showingDetails,
-                        fileSystemService: fileSystemService
-                    )
-                }
             }
 
-            // 状态栏
+            // 状态栏（统计已上移顶部，此处仅留错误/就绪/版本）
             HStack {
-                if let rootNode = fileSystemService.rootNode {
-                    Text(
-                        "总大小: \(ByteCountFormatter.string(fromByteCount: rootNode.totalSize, countStyle: .file))"
-                    )
-                    Spacer()
-                    Text("文件数: \(fileSystemService.filesScanned)")
-                } else if let errorMessage = fileSystemService.errorMessage {
+                if let errorMessage = fileSystemService.errorMessage {
                     Text("错误: \(errorMessage)")
                         .foregroundColor(.red)
                     Spacer()
-                } else {
+                } else if fileSystemService.rootNode == nil {
                     Text("就绪")
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text("CubeCleaner v0.1")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                } else {
+                    Spacer()
                 }
+                Text("CubeCleaner v0.3")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding(.horizontal)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
             .background(Color(.controlBackgroundColor))
         }
         .fileImporter(
@@ -320,6 +352,7 @@ struct ContentView: View {
             withAnimation(.easeOut(duration: 0.25)) {
                 rectangles = newRectangles
                 isLayouting = false
+                typeBreakdown = ColorSchemeManager.shared.typeBreakdown(for: rootNode)
             }
         }
 
