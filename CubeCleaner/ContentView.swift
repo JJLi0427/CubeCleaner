@@ -820,6 +820,52 @@ struct NavigationBarView: View {
     }
 }
 
+// MARK: - 侧栏分页（图例 / 详情）
+enum SidebarTab: Hashable {
+    case legend
+    case details
+}
+
+struct SidebarTabView: View {
+    @Binding var sidebarTab: SidebarTab
+    let selectedNode: Binding<TreeNode?>
+    let typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry]
+    let highlightedFileType: FileType?
+    let onToggleHighlight: (FileType) -> Void
+    let fileSystemService: FileSystemService
+    let scanRootURL: URL?
+    let onRequestDelete: (TreeNode) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $sidebarTab) {
+                Text("图例").tag(SidebarTab.legend)
+                Text("详情").tag(SidebarTab.details)
+            }
+            .pickerStyle(.segmented)
+            .padding(8)
+
+            switch sidebarTab {
+            case .legend:
+                LegendSidebarView(
+                    entries: typeBreakdown,
+                    highlightedFileType: highlightedFileType,
+                    onToggleHighlight: onToggleHighlight
+                )
+            case .details:
+                DetailsSidebarView(
+                    selectedNode: selectedNode,
+                    fileSystemService: fileSystemService,
+                    scanRootURL: scanRootURL,
+                    onRequestDelete: onRequestDelete
+                )
+            }
+        }
+        .frame(width: 200)
+        .background(.regularMaterial)
+    }
+}
+
 // MARK: - 图例侧栏视图
 struct LegendSidebarView: View {
     let entries: [ColorSchemeManager.TypeBreakdownEntry]
