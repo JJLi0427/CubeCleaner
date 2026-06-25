@@ -21,7 +21,7 @@ A macOS disk usage visualization application built with Swift and SwiftUI, inspi
 - 🗑️ **移到废纸篓**: 详情页垃圾桶按钮 + 二次确认，删除后自动重扫
 - 🔄 **钻取统计刷新**: 进入子目录/聚合块后顶部统计随钻取根刷新
 
-> 以下为规划中功能（见 Roadmap 与 NEXT_STEPS）：文件名/类型/大小/日期过滤、多视图、保存与导出（PNG/CSV/JSON）、删除/移到废纸篓、缩放平移、Quick Look 预览、键盘快捷键。
+> 以下为规划中功能（见 Roadmap 与 NEXT_STEPS）：文件名/类型/大小/日期过滤、多视图、保存与导出（PNG/CSV/JSON）、缩放平移、Quick Look 预览、键盘快捷键。
 
 ## Documentation
 
