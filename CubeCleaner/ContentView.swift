@@ -630,7 +630,8 @@ struct ChildrenListView: View {
 struct ActionsView: View {
     let selectedNode: TreeNode
     let fileSystemService: FileSystemService
-    let onClose: () -> Void
+    let scanRootURL: URL?
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -642,10 +643,17 @@ struct ActionsView: View {
             }
             .buttonStyle(.borderedProminent)
 
+            Button {
+                onDelete()
+            } label: {
+                Label("移到废纸篓", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+
             if selectedNode.item.isDirectory {
                 Button("重新扫描此文件夹") {
                     fileSystemService.scanDirectory(at: selectedNode.item.path)
-                    onClose()
                 }
                 .buttonStyle(.bordered)
             }
