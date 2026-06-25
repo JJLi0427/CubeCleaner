@@ -516,29 +516,17 @@ struct TreeMapCanvasView: View {
     }
 }
 
-// MARK: - 详情面板视图
-struct DetailsPanelView: View {
+// MARK: - 详情侧栏视图（原中间浮层，改为侧栏页）
+struct DetailsSidebarView: View {
     @Binding var selectedNode: TreeNode?
-    @Binding var showingDetails: Bool
     let fileSystemService: FileSystemService
+    let scanRootURL: URL?
+    let onRequestDelete: (TreeNode) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("文件详情")
-                    .font(.headline)
-
-                Spacer()
-
-                Button("x") {
-                    showingDetails = false
-                    selectedNode = nil
-                }
-                .buttonStyle(.plain)
-            }
-
-            if let selectedNode = selectedNode {
-                VStack(alignment: .leading, spacing: 8) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let selectedNode = selectedNode {
                     Text(selectedNode.item.name)
                         .font(.title3)
                         .fontWeight(.medium)
@@ -569,27 +557,22 @@ struct DetailsPanelView: View {
                             })
                     }
 
-                    Spacer()
-
                     ActionsView(
                         selectedNode: selectedNode,
                         fileSystemService: fileSystemService,
-                        onClose: {
-                            showingDetails = false
-                            self.selectedNode = nil
-                        }
+                        scanRootURL: scanRootURL,
+                        onDelete: { onRequestDelete(selectedNode) }
                     )
+                } else {
+                    Text("点击矩形查看详情")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 40)
                 }
             }
-        }
-        .padding()
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-        .frame(maxWidth: 500)
-        .background(Color(NSColor.controlBackgroundColor))
-        .onTapGesture {
-            showingDetails = false
-            selectedNode = nil
+            .padding(.horizontal)
+            .padding(.top, 8)
         }
     }
 }
