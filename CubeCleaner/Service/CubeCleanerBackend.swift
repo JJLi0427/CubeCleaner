@@ -33,6 +33,8 @@ import Combine
 import Darwin
 import Foundation
 import SwiftUI
+import AppKit
+
 
 // MARK: - 批量文件属性结构
 /// 用于getattrlistbulk批量获取文件属性的结构体
@@ -484,6 +486,25 @@ class ColorSchemeManager: ObservableObject {
         }
 
         return baseColor.opacity(0.7)
+    }
+
+    /// 按类型内最大块为基准调亮度：ratio=1(类型内最大)→原色最深，ratio→0→向浅提亮。
+    /// 提亮公式：c' = c + (1-c)*(1-ratio)*0.6。文件夹/聚合由调用方处理，本方法仅处理普通文件。
+    func depthColor(for node: TreeNode, maxSizeInType: Int64) -> Color {
+        let baseColor = color(for: node)
+        guard maxSizeInType > 0 else { return baseColor }
+        let ratio = Double(node.totalSize) / Double(maxSizeInType)
+        let clampedRatio = min(max(ratio, 0.0), 1.0)
+
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        NSColor(baseColor).usingColorSpace(.sRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
+
+        let k: Double = 0.6
+        let lighten = (1.0 - clampedRatio) * k
+        let nr = r + (1.0 - r) * lighten
+        let ng = g + (1.0 - g) * lighten
+        let nb = b + (1.0 - b) * lighten
+        return Color(red: nr, green: ng, blue: nb)
     }
 
     /// 类型占比条目（供统计条比例条与图例侧栏共用）
