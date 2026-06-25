@@ -906,6 +906,38 @@ struct SidebarTabView: View {
     }
 }
 
+// MARK: - 侧栏上下堆叠两区（图例上、详情下，不分页）
+struct SidebarDualView: View {
+    let selectedNode: Binding<TreeNode?>
+    let typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry]
+    let highlightedFileType: FileType?
+    let onToggleHighlight: (FileType) -> Void
+    let fileSystemService: FileSystemService
+    let scanRootURL: URL?
+    let onRequestDelete: (TreeNode) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 上半：图例区（弹性高度，可滚动）
+            LegendSidebarView(
+                entries: typeBreakdown,
+                highlightedFileType: highlightedFileType,
+                onToggleHighlight: onToggleHighlight
+            )
+            Divider()
+            // 下半：详情区（按内容，可滚动）
+            DetailsSidebarView(
+                selectedNode: selectedNode,
+                fileSystemService: fileSystemService,
+                scanRootURL: scanRootURL,
+                onRequestDelete: onRequestDelete
+            )
+        }
+        .frame(width: 200)
+        .background(.regularMaterial)
+    }
+}
+
 // MARK: - 图例侧栏视图
 struct LegendSidebarView: View {
     let entries: [ColorSchemeManager.TypeBreakdownEntry]
