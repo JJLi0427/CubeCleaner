@@ -519,6 +519,21 @@ class ColorSchemeManager: ObservableObject {
             .map { TypeBreakdownEntry(type: $0, size: sizes[$0] ?? 0, color: color(for: $0), total: total) }
             .sorted { $0.size > $1.size }
     }
+
+    /// 统计 node 子树的叶子文件数（非目录）
+    func fileCountInSubtree(_ node: TreeNode) -> Int {
+        if node.item.isDirectory {
+            return node.children.reduce(0) { $0 + fileCountInSubtree($1) }
+        } else {
+            return 1
+        }
+    }
+
+    /// 统计 node 子树的目录数（含 node 自身若为目录）
+    func folderCountInSubtree(_ node: TreeNode) -> Int {
+        let selfCount = node.item.isDirectory ? 1 : 0
+        return selfCount + node.children.reduce(0) { $0 + folderCountInSubtree($1) }
+    }
 }
 
 // MARK: TreeMapRectangle - TreeMap矩形结构
