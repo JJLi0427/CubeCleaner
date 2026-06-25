@@ -1060,14 +1060,18 @@ class FileSystemService: ObservableObject {
     /// 移到废纸篓后重扫扫描根，使 TreeMap/统计/图例同步。
     /// trashItem 需 read-write entitlement。
     func trashAndRescan(deleteURL: URL, scanRootURL: URL?) {
-        do {
-            var resultingURL: NSURL?
-            try FileManager.default.trashItem(at: deleteURL, resultingItemURL: &resultingURL)
-            if let scanRoot = scanRootURL {
-                scanDirectory(at: scanRoot)
+        Task {
+            do {
+                var resultingURL: NSURL?
+                try await Task.detached(priority: .userInitiated) {
+                    try FileManager.default.trashItem(at: deleteURL, resultingItemURL: &resultingURL)
+                }.value
+                if let scanRoot = scanRootURL {
+                    scanDirectory(at: scanRoot)
+                }
+            } catch {
+                errorMessage = "删除失败: \(error.localizedDescription)"
             }
-        } catch {
-            errorMessage = "删除失败: \(error.localizedDescription)"
         }
     }
 

@@ -272,7 +272,7 @@ struct ContentView: View {
                 } else {
                     Spacer()
                 }
-                Text("CubeCleaner v0.3")
+                Text("CubeCleaner v0.3.1")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
