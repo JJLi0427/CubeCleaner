@@ -65,7 +65,7 @@ Launch Screen → Disk Selection → Scanning Progress → Main Interface
 ```
 - 单 Canvas 居中，详情面板为浮层（点击矩形弹出）。
 - 面包屑浮于 Canvas 顶部。
-- 右侧分页侧栏（图例/详情，可隐藏）；无 Inspector。
+- 右侧双区侧栏（图例上/详情下，可隐藏）；无 Inspector。
 
 #### 3.1.2 Responsive Layout
 - **Minimum Width**: 由 SwiftUI 默认窗口约束
@@ -215,6 +215,9 @@ Folders:      Teal (#40C8E0)
 100MB - 1GB: Purple (#AF52DE)
 > 1GB:       Red (#FF3B30)
 ```
+
+（v0.3.2）同类型内按大小调亮度：以该类型在当前布局子树内的最大块为基准，
+越大越接近原色(深)，越小越浅。文件夹固定色，不参与深度调节。
 
 #### 3.5.3 Interactive Elements (v0.3 已实现)
 - **单击**: 选中文件/文件夹，弹出详情面板

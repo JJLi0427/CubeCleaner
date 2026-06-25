@@ -22,7 +22,7 @@ struct ContentView: View {
     @State private var highlightedFileType: FileType? = nil
     @State private var typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry] = []
 
-    // v0.3.1: 侧栏分页 + 删除 + 钻取统计刷新
+    // v0.3.1/v0.3.2: 侧栏双区 + 删除 + 钻取统计刷新 + 类型内深度配色
     @State private var scanRootURL: URL?
     @State private var showingDeleteConfirm = false
     @State private var subtreeTotalSize: Int64 = 0
@@ -223,7 +223,7 @@ struct ContentView: View {
                     }
                     }  // close ZStack
 
-                    // 侧栏（图例/详情分页）
+                    // 侧栏（图例上/详情下双区）
                     if showLegend {
                         SidebarDualView(
                             selectedNode: $selectedNode,
