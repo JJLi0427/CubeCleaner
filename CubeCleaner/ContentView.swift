@@ -15,13 +15,20 @@ struct ContentView: View {
     @State private var hoveredNode: TreeNode?
     @State private var selectedNode: TreeNode?
     @State private var currentRoot: TreeNode?
-    @State private var showingDetails = false
     @State private var showingFilePicker = false
 
     // v0.3: 图例侧栏 + 类型高亮 + 类型分布
     @State private var showLegend: Bool = true
     @State private var highlightedFileType: FileType? = nil
     @State private var typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry] = []
+
+    // v0.3.1: 侧栏分页 + 删除 + 钻取统计刷新
+    @State private var sidebarTab: SidebarTab = .legend
+    @State private var scanRootURL: URL?
+    @State private var showingDeleteConfirm = false
+    @State private var subtreeTotalSize: Int64 = 0
+    @State private var subtreeFileCount: Int = 0
+    @State private var subtreeFolderCount: Int = 0
 
     // 性能优化相关状态
     @State private var isResizing = false
@@ -74,9 +81,9 @@ struct ContentView: View {
             // 统计条 + 类型比例条
             if fileSystemService.rootNode != nil || fileSystemService.isScanning {
                 StatsBarView(
-                    totalSize: fileSystemService.totalSize,
-                    fileCount: fileSystemService.filesScanned,
-                    folderCount: fileSystemService.folderCount,
+                    totalSize: subtreeTotalSize,
+                    fileCount: subtreeFileCount,
+                    folderCount: subtreeFolderCount,
                     isScanning: fileSystemService.isScanning
                 )
                 TypeRatioBarView(entries: typeBreakdown, isScanning: fileSystemService.isScanning)
@@ -142,7 +149,7 @@ struct ContentView: View {
                             highlightedFileType: highlightedFileType,
                             onTap: { rectangle in
                                 selectedNode = rectangle.node
-                                showingDetails = true
+                                sidebarTab = .details
                             },
                             onLongPress: { rectangle in
                                 NSWorkspace.shared.selectFile(
@@ -216,24 +223,22 @@ struct ContentView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-
-                    // 详情面板（浮于 Canvas 之上的覆盖层）
-                    if showingDetails {
-                        DetailsPanelView(
-                            selectedNode: $selectedNode,
-                            showingDetails: $showingDetails,
-                            fileSystemService: fileSystemService
-                        )
-                    }
                     }  // close ZStack
 
-                    // 图例侧栏
+                    // 侧栏（图例/详情分页）
                     if showLegend {
-                        LegendSidebarView(
-                            entries: typeBreakdown,
+                        SidebarTabView(
+                            sidebarTab: $sidebarTab,
+                            selectedNode: $selectedNode,
+                            typeBreakdown: typeBreakdown,
                             highlightedFileType: highlightedFileType,
                             onToggleHighlight: { type in
                                 highlightedFileType = (highlightedFileType == type) ? nil : type
+                            },
+                            fileSystemService: fileSystemService,
+                            scanRootURL: scanRootURL,
+                            onRequestDelete: { _ in
+                                showingDeleteConfirm = true
                             }
                         )
                     }
@@ -275,6 +280,28 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(Color(.controlBackgroundColor))
         }
+        .confirmationDialog(
+            "移到废纸篓",
+            isPresented: $showingDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("移到废纸篓", role: .destructive) {
+                if let node = selectedNode {
+                    fileSystemService.trashAndRescan(
+                        deleteURL: node.item.path,
+                        scanRootURL: scanRootURL
+                    )
+                    selectedNode = nil
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            if let node = selectedNode {
+                Text("将把「\(node.item.name)」（\(ByteCountFormatter.string(fromByteCount: node.totalSize, countStyle: .file))）移到废纸篓，可在废纸篓中恢复。确定继续？")
+            } else {
+                Text("将把选中项移到废纸篓，可在废纸篓中恢复。确定继续？")
+            }
+        }
         .fileImporter(
             isPresented: $showingFilePicker,
             allowedContentTypes: [.folder],
@@ -284,6 +311,7 @@ struct ContentView: View {
             case .success(let urls):
                 if let url = urls.first {
                     selectedPath = url
+                    scanRootURL = url
                     fileSystemService.scanDirectory(at: url)
                 }
             case .failure(let error):
@@ -353,6 +381,9 @@ struct ContentView: View {
                 rectangles = newRectangles
                 isLayouting = false
                 typeBreakdown = ColorSchemeManager.shared.typeBreakdown(for: rootNode)
+                subtreeTotalSize = rootNode.totalSize
+                subtreeFileCount = ColorSchemeManager.shared.fileCountInSubtree(rootNode)
+                subtreeFolderCount = ColorSchemeManager.shared.folderCountInSubtree(rootNode)
             }
         }
 
