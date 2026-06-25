@@ -2,9 +2,9 @@
 
 A macOS disk usage visualization application built with Swift and SwiftUI, inspired by GrandPerspective. CubeCleaner provides an intuitive tree map visualization of your disk usage, helping you identify large files and folders to manage your disk space effectively.
 
-**当前状态：v0.3-beta，顶部统计条、类型占比图例、高饱和配色与返回导航可用。**
+**当前状态：v0.3.1-beta，详情侧栏分页、移到废纸篓删除、钻取统计随根刷新可用。**
 
-## Features (v0.3)
+## Features (v0.3.1)
 
 - 🗂️ **Visual Disk Analysis**: TreeMap 可视化，矩形面积与文件大小成比例
 - 🧩 **小文件聚合**: 低于阈值的文件自动归入"其他"块，面积守恒，无过细矩形
@@ -17,6 +17,9 @@ A macOS disk usage visualization application built with Swift and SwiftUI, inspi
 - 🗂️ **类型图例侧栏**: 右侧列各类型大小占比，点击高亮 TreeMap 中该类型矩形
 - 🎨 **高饱和配色**: 8 文件类型 + 文件夹采用高饱和 RGB，颜色丰富易辨
 - ↩️ **返回导航**: 独立"返回上一级"按钮，根目录自动禁用
+- 🗂️ **详情侧栏分页**: 选中矩形详情挪进右侧侧栏，图例/详情分页切换，常驻可滚
+- 🗑️ **移到废纸篓**: 详情页垃圾桶按钮 + 二次确认，删除后自动重扫
+- 🔄 **钻取统计刷新**: 进入子目录/聚合块后顶部统计随钻取根刷新
 
 > 以下为规划中功能（见 Roadmap 与 NEXT_STEPS）：文件名/类型/大小/日期过滤、多视图、保存与导出（PNG/CSV/JSON）、删除/移到废纸篓、缩放平移、Quick Look 预览、键盘快捷键。
 
