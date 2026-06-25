@@ -687,6 +687,7 @@ class BinaryTreeMapCalculator: ObservableObject {
 
     // MARK: - 全局状态 - 一个变量搞定颜色
     private var globalMaxSize: Int64 = 0
+    private var maxSizeByType: [FileType: Int64] = [:]
 
     // MARK: - 主入口 - 就这一个函数，其他都是实现细节
     /**
@@ -702,6 +703,7 @@ class BinaryTreeMapCalculator: ObservableObject {
 
         // 设置全局最大值，用于颜色和阈值计算
         globalMaxSize = findMaxSize(from: node)
+        maxSizeByType = findMaxSizeByType(from: node)
 
         // 入口为聚合"其他"块：用户双击钻取进来，需展开其内部小文件。
         // 普通目录走默认分支；聚合节点只有在作为钻取根时才展开。
@@ -1015,14 +1017,39 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /**
+     * 查找每个 FileType 在子树内的最大叶子文件大小 - 用于颜色深度基准
+     */
+    private func findMaxSizeByType(from node: TreeNode) -> [FileType: Int64] {
+        var result: [FileType: Int64] = [:]
+
+        func traverse(_ current: TreeNode) {
+            if current.item.isDirectory {
+                current.children.forEach { traverse($0) }
+            } else {
+                let ft = FileType.from(extension: current.item.fileExtension)
+                let cur = result[ft] ?? 0
+                if current.totalSize > cur {
+                    result[ft] = current.totalSize
+                }
+            }
+        }
+        traverse(node)
+        return result
+    }
+
+    /**
      * 创建叶子矩形 - 就是包装一下数据
      */
     private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int, isAggregated: Bool = false) -> TreeMapRectangle {
         let color: Color
         if node.isAggregated {
             color = Color(.systemGray).opacity(0.5)
+        } else if node.item.isDirectory {
+            color = colorSchemeManager.colorForDirectory().opacity(0.7)
         } else {
-            color = colorSchemeManager.adjustedColor(for: node, maxSize: globalMaxSize)
+            let ft = FileType.from(extension: node.item.fileExtension)
+            let maxSizeInType = maxSizeByType[ft] ?? node.totalSize
+            color = colorSchemeManager.depthColor(for: node, maxSizeInType: maxSizeInType)
         }
         return TreeMapRectangle(
             node: node,
