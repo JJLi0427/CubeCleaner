@@ -488,7 +488,7 @@ class ColorSchemeManager: ObservableObject {
 
     /// 类型占比条目（供统计条比例条与图例侧栏共用）
     struct TypeBreakdownEntry: Identifiable {
-        let id = UUID()
+        var id: FileType { type }
         let type: FileType
         let size: Int64
         let color: Color

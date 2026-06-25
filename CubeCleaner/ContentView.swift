@@ -79,7 +79,7 @@ struct ContentView: View {
                     folderCount: fileSystemService.folderCount,
                     isScanning: fileSystemService.isScanning
                 )
-                TypeRatioBarView(entries: typeBreakdown)
+                TypeRatioBarView(entries: typeBreakdown, isScanning: fileSystemService.isScanning)
                     .padding(.horizontal)
                     .padding(.bottom, 8)
                     .background(Color(.controlBackgroundColor))
@@ -767,22 +767,29 @@ struct MetricBlock: View {
 // MARK: - 类型占比比例条
 struct TypeRatioBarView: View {
     let entries: [ColorSchemeManager.TypeBreakdownEntry]
+    let isScanning: Bool
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                HStack(spacing: 0) {
-                    ForEach(entries.filter { $0.size > 0 }) { entry in
-                        entry.color
-                            .frame(width: geo.size.width * entry.ratio)
+        if isScanning {
+            ProgressView()
+                .progressViewStyle(.linear)
+                .frame(height: 10)
+        } else {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary)
+                    HStack(spacing: 0) {
+                        ForEach(entries.filter { $0.size > 0 }) { entry in
+                            entry.color
+                                .frame(width: geo.size.width * entry.ratio)
+                        }
                     }
+                    .clipShape(Capsule())
                 }
-                .clipShape(Capsule())
             }
+            .frame(height: 10)
+            .help(tooltipText)
         }
-        .frame(height: 10)
-        .help(tooltipText)
     }
 
     /// 整条 tooltip（首版不分区段命中）
@@ -852,8 +859,8 @@ struct LegendSidebarView: View {
                             entry: entry,
                             isHighlighted: highlightedFileType == entry.type
                         )
-                        .onTapGesture { onToggleHighlight(entry.type) }
                         .contentShape(Rectangle())
+                        .onTapGesture { onToggleHighlight(entry.type) }
                     }
                 }
                 .padding(.horizontal)
