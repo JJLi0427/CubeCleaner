@@ -475,9 +475,10 @@ struct TreeMapCanvasView: View {
         let rect = rectangle.rect
         let isHovered = hoveredRectangle?.id == rectangle.id
 
-        // 绘制背景 - 高亮类型保持原色，其它降透
+        // 绘制背景 - 颜色深度由 depthColor 承载(亮度通道)，此处透明度用常量；
+        // 高亮类型保持原色，其它降透
         let dimmed = highlightedFileType != nil && !isHighlighted(rectangle)
-        let baseOpacity = isHovered ? 0.95 : 0.8
+        let baseOpacity: Double = isHovered ? 0.95 : 0.85
         let opacity = dimmed ? baseOpacity * 0.2 : baseOpacity
         context.fill(
             Path(rect),
