@@ -1,5 +1,7 @@
 # CubeCleaner
 
+[![Release](https://github.com/JJLi0427/CubeCleaner/actions/workflows/release.yml/badge.svg)](https://github.com/JJLi0427/CubeCleaner/actions/workflows/release.yml)
+
 A macOS disk usage visualization application built with Swift and SwiftUI, inspired by GrandPerspective. CubeCleaner provides an intuitive tree map visualization of your disk usage, helping you identify large files and folders to manage your disk space effectively.
 
 **当前状态：v0.3.2-beta，图例/详情同列双区、同类型内大小调深度配色可用。**
@@ -71,6 +73,10 @@ CubeCleaner/
    ```
 
 3. Build and run the project (⌘+R)
+
+### Distribution (CI builds)
+
+合并到 `main` 或推送 `v*` tag 会自动构建 Release DMG 并发布到 [GitHub Releases](https://github.com/JJLi0427/CubeCleaner/releases)。DMG 为 **ad-hoc 签名**（`CODE_SIGN_IDENTITY="-"`，无 Developer ID、未公证）——在其他 Mac 上首次打开会被 Gatekeeper 拦截，请右键 → 打开，或拖到 /Applications 后运行 `xattr -dr com.apple.quarantine /Applications/CubeCleaner.app`。
 
 ## Development Roadmap
 
