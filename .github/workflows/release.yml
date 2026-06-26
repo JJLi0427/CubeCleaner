@@ -49,11 +49,15 @@ jobs:
             echo "is_prerelease=${IS_PRERELEASE}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Set marketing version (agvtool)
+      - name: Set marketing version
         run: |
           set -euo pipefail
-          agvtool new-marketing-version "${{ steps.version.outputs.marketing }}"
-          grep -m1 "MARKETING_VERSION" CubeCleaner.xcodeproj/project.pbxproj
+          # 本工程 GENERATE_INFOPLIST_FILE=YES（无 Info.plist 文件），agvtool 不落盘，
+          # 改用 sed 直接写 project.pbxproj 的 MARKETING_VERSION（Debug/Release 两处）。
+          MARKETING="${{ steps.version.outputs.marketing }}"
+          sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${MARKETING};/" \
+            CubeCleaner.xcodeproj/project.pbxproj
+          grep -n "MARKETING_VERSION" CubeCleaner.xcodeproj/project.pbxproj
 
       - name: Build Release .app (ad-hoc signed)
         run: |
