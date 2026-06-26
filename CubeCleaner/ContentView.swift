@@ -875,6 +875,7 @@ struct SidebarDualView: View {
                 highlightedFileType: highlightedFileType,
                 onToggleHighlight: onToggleHighlight
             )
+            .frame(maxHeight: .infinity)
             Divider()
             // 下半：详情区（按内容，可滚动）
             DetailsSidebarView(
@@ -883,6 +884,7 @@ struct SidebarDualView: View {
                 scanRootURL: scanRootURL,
                 onRequestDelete: onRequestDelete
             )
+            .frame(minHeight: 240)
         }
         .frame(width: 200)
         .background(.regularMaterial)

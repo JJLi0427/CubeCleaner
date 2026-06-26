@@ -475,19 +475,6 @@ class ColorSchemeManager: ObservableObject {
         return directoryColor
     }
 
-    /// 根据文件大小调整颜色深度
-    func adjustedColor(for node: TreeNode, maxSize: Int64) -> Color {
-        let baseColor = color(for: node)
-
-        if maxSize > 0 {
-            let ratio = Double(node.totalSize) / Double(maxSize)
-            let opacity = 0.3 + (ratio * 0.7)  // 透明度范围 0.3 - 1.0
-            return baseColor.opacity(opacity)
-        }
-
-        return baseColor.opacity(0.7)
-    }
-
     /// 按类型内最大块为基准调亮度：ratio=1(类型内最大)→原色最深，ratio→0→向浅提亮。
     /// 提亮公式：c' = c + (1-c)*(1-ratio)*0.6。文件夹/聚合由调用方处理，本方法仅处理普通文件。
     func depthColor(for node: TreeNode, maxSizeInType: Int64) -> Color {
@@ -686,7 +673,6 @@ class BinaryTreeMapCalculator: ObservableObject {
     private let minFileRatio: Double = 0.005  // 聚合阈值：小于总大小0.5%的文件归入"其他"块
 
     // MARK: - 全局状态 - 一个变量搞定颜色
-    private var globalMaxSize: Int64 = 0
     private var maxSizeByType: [FileType: Int64] = [:]
 
     // MARK: - 主入口 - 就这一个函数，其他都是实现细节
@@ -702,7 +688,6 @@ class BinaryTreeMapCalculator: ObservableObject {
         }
 
         // 设置全局最大值，用于颜色和阈值计算
-        globalMaxSize = findMaxSize(from: node)
         maxSizeByType = findMaxSizeByType(from: node)
 
         // 入口为聚合"其他"块：用户双击钻取进来，需展开其内部小文件。
@@ -999,21 +984,6 @@ class BinaryTreeMapCalculator: ObservableObject {
         }
 
         return kept + [otherNode]
-    }
-
-    /**
-     * 查找最大文件大小 - 简单遍历
-     */
-    private func findMaxSize(from node: TreeNode) -> Int64 {
-        var maxSize = node.totalSize
-
-        func traverse(_ current: TreeNode) {
-            maxSize = max(maxSize, current.totalSize)
-            current.children.forEach { traverse($0) }
-        }
-
-        traverse(node)
-        return maxSize
     }
 
     /**
