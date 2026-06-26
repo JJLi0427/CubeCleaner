@@ -12,8 +12,11 @@ Thumbs.db
 build/
 
 # 忽略Swift项目中的Xcode生成的文件
+# 注意：xcodeproj/xcworkspace 目录本身需提交（含工程定义），仅忽略个人用户态
 # *.xcworkspace
 # *.xcodeproj
+*.xcuserstate
+xcuserdata/
 
 # 忽略Swift项目的DerivedData
 DerivedData/
@@ -39,5 +42,3 @@ Package.resolved
 
 # vscode配置文件夹
 .vscode/
-
-.github/

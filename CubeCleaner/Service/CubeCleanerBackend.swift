@@ -33,6 +33,8 @@ import Combine
 import Darwin
 import Foundation
 import SwiftUI
+import AppKit
+
 
 // MARK: - 批量文件属性结构
 /// 用于getattrlistbulk批量获取文件属性的结构体
@@ -321,6 +323,14 @@ class TreeNode: ObservableObject, Identifiable, Equatable {
     @Published var children: [TreeNode] = []
     @Published var isExpanded: Bool = false
 
+    /// 是否为聚合的虚拟"其他"节点
+    private(set) var isAggregated: Bool = false
+
+    /// 标记为聚合节点
+    func markAsAggregated() {
+        isAggregated = true
+    }
+
     /// 节点在树中的层级深度
     var level: Int {
         (parent?.level ?? -1) + 1
@@ -428,20 +438,20 @@ enum FileType: String, CaseIterable {
 class ColorSchemeManager: ObservableObject {
     static let shared = ColorSchemeManager()
 
-    /// 文件类型颜色映射表
+    /// 高饱和调色板（v0.3）— 固定 RGB，不做亮/暗分别调色
     private let fileTypeColors: [FileType: Color] = [
-        .document: .blue,
-        .image: .green,
-        .video: .red,
-        .audio: .purple,
-        .archive: .orange,
-        .application: .gray,
-        .system: .yellow,
-        .other: Color(.systemGray),
+        .document: Color(red: 0.039, green: 0.518, blue: 1.0),     // #0A84FF
+        .image: Color(red: 0.188, green: 0.820, blue: 0.345),      // #30D158
+        .video: Color(red: 1.0, green: 0.271, blue: 0.227),        // #FF453A
+        .audio: Color(red: 0.749, green: 0.353, blue: 0.949),      // #BF5AF2
+        .archive: Color(red: 1.0, green: 0.624, blue: 0.039),      // #FF9F0A
+        .application: Color(red: 0.392, green: 0.824, blue: 1.0),  // #64D2FF
+        .system: Color(red: 1.0, green: 0.839, blue: 0.039),       // #FFD60A
+        .other: Color(red: 1.0, green: 0.216, blue: 0.373),        // #FF375F
     ]
 
-    /// 文件夹专用颜色
-    private let directoryColor: Color = .brown
+    /// 文件夹专用颜色（高饱和深青）
+    private let directoryColor: Color = Color(red: 0.251, green: 0.784, blue: 0.878)  // #40C8E0
 
     private init() {}
 
@@ -465,17 +475,72 @@ class ColorSchemeManager: ObservableObject {
         return directoryColor
     }
 
-    /// 根据文件大小调整颜色深度
-    func adjustedColor(for node: TreeNode, maxSize: Int64) -> Color {
+    /// 按类型内最大块为基准调亮度：ratio=1(类型内最大)→原色最深，ratio→0→向浅提亮。
+    /// 提亮公式：c' = c + (1-c)*(1-ratio)*0.6。文件夹/聚合由调用方处理，本方法仅处理普通文件。
+    func depthColor(for node: TreeNode, maxSizeInType: Int64) -> Color {
         let baseColor = color(for: node)
+        guard maxSizeInType > 0 else { return baseColor }
+        let ratio = Double(node.totalSize) / Double(maxSizeInType)
+        let clampedRatio = min(max(ratio, 0.0), 1.0)
 
-        if maxSize > 0 {
-            let ratio = Double(node.totalSize) / Double(maxSize)
-            let opacity = 0.3 + (ratio * 0.7)  // 透明度范围 0.3 - 1.0
-            return baseColor.opacity(opacity)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        NSColor(baseColor).usingColorSpace(.sRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
+
+        let k: Double = 0.6
+        let lighten = (1.0 - clampedRatio) * k
+        let nr = r + (1.0 - r) * lighten
+        let ng = g + (1.0 - g) * lighten
+        let nb = b + (1.0 - b) * lighten
+        return Color(red: nr, green: ng, blue: nb)
+    }
+
+    /// 类型占比条目（供统计条比例条与图例侧栏共用）
+    struct TypeBreakdownEntry: Identifiable {
+        var id: FileType { type }
+        let type: FileType
+        let size: Int64
+        let color: Color
+        var ratio: CGFloat {      // size / total；total=0 时外部不渲染
+            total > 0 ? CGFloat(size) / CGFloat(total) : 0
         }
+        let total: Int64
+    }
 
-        return baseColor.opacity(0.7)
+    /// 聚合 node 子树所有叶子文件，按 FileType 累加 item.size。
+    /// 文件夹不计入（避免与子文件重复）。返回 8 类型（含 size=0），按 size 降序。
+    func typeBreakdown(for node: TreeNode) -> [TypeBreakdownEntry] {
+        var sizes: [FileType: Int64] = [:]
+        for type in FileType.allCases { sizes[type] = 0 }
+
+        func traverse(_ current: TreeNode) {
+            if current.item.isDirectory {
+                for child in current.children { traverse(child) }
+            } else {
+                let ft = FileType.from(extension: current.item.fileExtension)
+                sizes[ft, default: 0] += current.item.size
+            }
+        }
+        traverse(node)
+
+        let total = sizes.values.reduce(Int64(0), +)
+        return FileType.allCases
+            .map { TypeBreakdownEntry(type: $0, size: sizes[$0] ?? 0, color: color(for: $0), total: total) }
+            .sorted { $0.size > $1.size }
+    }
+
+    /// 统计 node 子树的叶子文件数（非目录）
+    func fileCountInSubtree(_ node: TreeNode) -> Int {
+        if node.item.isDirectory {
+            return node.children.reduce(0) { $0 + fileCountInSubtree($1) }
+        } else {
+            return 1
+        }
+    }
+
+    /// 统计 node 子树的目录数（含 node 自身若为目录）
+    func folderCountInSubtree(_ node: TreeNode) -> Int {
+        let selfCount = node.item.isDirectory ? 1 : 0
+        return selfCount + node.children.reduce(0) { $0 + folderCountInSubtree($1) }
     }
 }
 
@@ -494,6 +559,7 @@ struct TreeMapRectangle: Identifiable {
     let rect: CGRect
     let color: Color
     let level: Int
+    let isAggregated: Bool  // 是否为聚合的"其他"块
 
     /**
      * 是否显示标签的判断逻辑
@@ -604,10 +670,10 @@ class BinaryTreeMapCalculator: ObservableObject {
     private let colorSchemeManager = ColorSchemeManager.shared
     private let minVisibleSize: CGFloat = 24  // 最小可见尺寸：24x24像素，用户能看清
     private let maxDepth: Int = 8  // 限制递归深度，避免过度分割
-    private let minFileRatio: Double = 0.01  // 文件大小阈值：小于总大小1%的文件合并显示
+    private let minFileRatio: Double = 0.005  // 聚合阈值：小于总大小0.5%的文件归入"其他"块
 
     // MARK: - 全局状态 - 一个变量搞定颜色
-    private var globalMaxSize: Int64 = 0
+    private var maxSizeByType: [FileType: Int64] = [:]
 
     // MARK: - 主入口 - 就这一个函数，其他都是实现细节
     /**
@@ -622,7 +688,13 @@ class BinaryTreeMapCalculator: ObservableObject {
         }
 
         // 设置全局最大值，用于颜色和阈值计算
-        globalMaxSize = findMaxSize(from: node)
+        maxSizeByType = findMaxSizeByType(from: node)
+
+        // 入口为聚合"其他"块：用户双击钻取进来，需展开其内部小文件。
+        // 普通目录走默认分支；聚合节点只有在作为钻取根时才展开。
+        if node.isAggregated {
+            return binaryTreeMap(node: node, rect: rect, depth: 0, expandAggregated: true)
+        }
 
         // 开始递归
         return binaryTreeMap(node: node, rect: rect, depth: 0)
@@ -637,9 +709,9 @@ class BinaryTreeMapCalculator: ObservableObject {
      * 2. 直接处理节点数组 - 简单粗暴有效
      * 3. 没有特殊情况 - 递归到底
      */
-    private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int) -> [TreeMapRectangle] {
+    private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int, expandAggregated: Bool = false) -> [TreeMapRectangle] {
         // 获取有效子节点
-        let children = getValidChildren(node.children)
+        let children = getValidChildren(of: node)
 
         // 递归终止：没有子节点就画叶子
         if children.isEmpty {
@@ -649,6 +721,13 @@ class BinaryTreeMapCalculator: ObservableObject {
         // 太深了，直接展平所有子节点
         if depth >= maxDepth {
             return flattenChildren(children, in: rect, depth: depth)
+        }
+
+        // 聚合"其他"块：默认作为叶子矩形直接绘制，不参与递归二分。
+        // 当它是用户双击钻取的根节点时(expandAggregated=true)，
+        // 需展开其内部小文件供查看，越过此叶子逻辑继续递归。
+        if node.isAggregated && !expandAggregated {
+            return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
         // 只有一个子节点？直接递归
@@ -838,69 +917,116 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /**
-     * 获取有效子节点 - 智能过滤策略
+     * 获取有效子节点 - 聚合"其他"块策略
      *
-     * 过滤规则：
-     * 1. 大小为0的节点（无意义）
-     * 2. 小于总大小1%的文件（太小了，合并处理）
-     * 3. 保留至少前10大的文件（避免全部被过滤）
+     * 规则：
+     * 1. 移除大小为0的节点
+     * 2. 按大小降序排序
+     * 3. 阈值 = 父目录总大小 × minFileRatio (0.5%)
+     * 4. 保留所有 >= 阈值的子项
+     * 5. 剩余子项聚合为一个虚拟"其他"节点（面积守恒，保留子项以支持双击钻取）
+     * 6. 边界：若全部 < 阈值，不聚合，保留前 10 大，避免空图
      */
-    private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
-        // 基础过滤：移除空文件
-        let nonZeroChildren = children.filter { $0.totalSize > 0 }
-
+    private func getValidChildren(of parent: TreeNode) -> [TreeNode] {
+        let nonZeroChildren = parent.children.filter { $0.totalSize > 0 }
         guard !nonZeroChildren.isEmpty else { return [] }
 
-        // 如果子节点不多，直接返回
+        // 子节点不多，直接返回
         if nonZeroChildren.count <= 5 {
             return nonZeroChildren
         }
 
-        // 计算总大小
-        let totalSize = nonZeroChildren.reduce(0) { $0 + $1.totalSize }
-        let sizeThreshold = Int64(Double(totalSize) * minFileRatio)
-
-        // 按大小排序，保留重要文件
         let sortedChildren = nonZeroChildren.sorted { $0.totalSize > $1.totalSize }
+        let totalSize = sortedChildren.reduce(Int64(0)) { $0 + $1.totalSize }
+        let threshold = Int64(Double(totalSize) * minFileRatio)
 
-        // 保留策略：
-        // 1. 前10大文件无条件保留
-        // 2. 其他文件必须超过阈值
-        var result: [TreeNode] = []
+        // 分离保留项与待聚合项
+        var kept: [TreeNode] = []
+        var aggregatedChildren: [TreeNode] = []
 
-        for (index, child) in sortedChildren.enumerated() {
-            if index < 10 || child.totalSize >= sizeThreshold {
-                result.append(child)
+        for child in sortedChildren {
+            if child.totalSize >= threshold {
+                kept.append(child)
+            } else {
+                aggregatedChildren.append(child)
             }
         }
 
-        return result.isEmpty ? [sortedChildren[0]] : result
+        // 边界：若全部 < 阈值（即 kept 为空），保留前 10 大，不聚合
+        if kept.isEmpty {
+            return Array(sortedChildren.prefix(10))
+        }
+
+        // 没有可聚合的小文件，直接返回
+        if aggregatedChildren.isEmpty {
+            return kept
+        }
+
+        // 构造虚拟"其他"节点 - 把待聚合的子项挂为它的 children，
+        // 这样双击该块可钻取进去看内部小文件。
+        // 注意：isDirectory 保持 false，使 totalSize 走文件分支返回 item.size，
+        // 保证面积守恒（若为 true 会叠加 children 总大小导致面积翻倍）。
+        let aggregatedSize = aggregatedChildren.reduce(Int64(0)) { $0 + $1.totalSize }
+        let otherItem = FileSystemItem(
+            name: "其他 (\(aggregatedChildren.count) 项)",
+            path: URL(fileURLWithPath: "/__aggregated__"),
+            size: aggregatedSize,
+            isDirectory: false,
+            creationDate: Date(timeIntervalSince1970: 0),
+            modificationDate: Date(timeIntervalSince1970: 0)
+        )
+        let otherNode = TreeNode(item: otherItem, parent: parent)
+        otherNode.markAsAggregated()
+        // 复用原有子节点（不改其 parent），仅挂到 otherNode.children 下，
+        // 供钻取后布局使用；面包屑只需沿 otherNode.parent 上溯即可。
+        for child in aggregatedChildren {
+            otherNode.addChild(child)
+        }
+
+        return kept + [otherNode]
     }
 
     /**
-     * 查找最大文件大小 - 简单遍历
+     * 查找每个 FileType 在子树内的最大叶子文件大小 - 用于颜色深度基准
      */
-    private func findMaxSize(from node: TreeNode) -> Int64 {
-        var maxSize = node.totalSize
+    private func findMaxSizeByType(from node: TreeNode) -> [FileType: Int64] {
+        var result: [FileType: Int64] = [:]
 
         func traverse(_ current: TreeNode) {
-            maxSize = max(maxSize, current.totalSize)
-            current.children.forEach { traverse($0) }
+            if current.item.isDirectory {
+                current.children.forEach { traverse($0) }
+            } else {
+                let ft = FileType.from(extension: current.item.fileExtension)
+                let cur = result[ft] ?? 0
+                if current.totalSize > cur {
+                    result[ft] = current.totalSize
+                }
+            }
         }
-
         traverse(node)
-        return maxSize
+        return result
     }
 
     /**
      * 创建叶子矩形 - 就是包装一下数据
      */
-    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int) -> TreeMapRectangle {
+    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int, isAggregated: Bool = false) -> TreeMapRectangle {
+        let color: Color
+        if node.isAggregated {
+            color = Color(.systemGray).opacity(0.5)
+        } else if node.item.isDirectory {
+            color = colorSchemeManager.colorForDirectory().opacity(0.7)
+        } else {
+            let ft = FileType.from(extension: node.item.fileExtension)
+            let maxSizeInType = maxSizeByType[ft] ?? node.totalSize
+            color = colorSchemeManager.depthColor(for: node, maxSizeInType: maxSizeInType)
+        }
         return TreeMapRectangle(
             node: node,
             rect: rect,
-            color: colorSchemeManager.adjustedColor(for: node, maxSize: globalMaxSize),
-            level: depth
+            color: color,
+            level: depth,
+            isAggregated: node.isAggregated
         )
     }
 }
@@ -925,6 +1051,7 @@ class FileSystemService: ObservableObject {
     @Published var scanProgress: Double = 0.0
     @Published var currentPath: String = ""
     @Published var filesScanned: Int = 0
+    @Published var folderCount: Int = 0
     @Published var totalSize: Int64 = 0
     @Published var rootNode: TreeNode?
     @Published var errorMessage: String?
@@ -948,6 +1075,24 @@ class FileSystemService: ObservableObject {
         }
     }
 
+    /// 移到废纸篓后重扫扫描根，使 TreeMap/统计/图例同步。
+    /// trashItem 需 read-write entitlement。
+    func trashAndRescan(deleteURL: URL, scanRootURL: URL?) {
+        Task {
+            do {
+                var resultingURL: NSURL?
+                try await Task.detached(priority: .userInitiated) {
+                    try FileManager.default.trashItem(at: deleteURL, resultingItemURL: &resultingURL)
+                }.value
+                if let scanRoot = scanRootURL {
+                    scanDirectory(at: scanRoot)
+                }
+            } catch {
+                errorMessage = "删除失败: \(error.localizedDescription)"
+            }
+        }
+    }
+
     func cancelScan() {
         scanTask?.cancel()
         scanTask = nil
@@ -966,6 +1111,7 @@ class FileSystemService: ObservableObject {
         isScanning = true
         scanProgress = 0.0
         filesScanned = 0
+        folderCount = 0
         totalSize = 0
         currentPath = ""
         errorMessage = nil
@@ -1105,6 +1251,7 @@ class FileSystemService: ObservableObject {
 
             // 递归扫描子目录
             if item.isDirectory {
+                folderCount += 1
                 await scanRecursively(node: childNode, currentDepth: currentDepth + 1)
             }
         }
@@ -1152,6 +1299,7 @@ class FileSystemService: ObservableObject {
 
                     // 递归扫描子目录
                     if item.isDirectory {
+                        folderCount += 1
                         await scanRecursivelyFallback(
                             node: childNode, currentDepth: currentDepth + 1)
                     }

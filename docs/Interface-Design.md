@@ -20,13 +20,12 @@ CubeCleaner follows Apple's Human Interface Guidelines with a focus on:
 ### 2.1 Window Hierarchy
 ```
 MainWindow
-├── MenuBar
-├── Toolbar
+├── Toolbar (选择文件夹 / 取消扫描 / 状态信息)
 ├── ContentView
-│   ├── Sidebar (File Navigator)
-│   ├── VisualizationView (TreeMap)
-│   └── InspectorPanel
-└── StatusBar
+│   ├── BreadcrumbView (浮于顶部)
+│   ├── TreeMapCanvasView (Canvas 渲染)
+│   └── DetailsPanelView (点击矩形弹出浮层)
+└── StatusBar (总大小 / 文件数)
 ```
 
 ### 2.2 Navigation Flow
@@ -42,38 +41,41 @@ Launch Screen → Disk Selection → Scanning Progress → Main Interface
 
 ### 3.1 Main Window Layout
 
-#### 3.1.1 Window Structure
+#### 3.1.1 Window Structure (v0.3 实际布局)
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ File  Edit  View  Scan  Window  Help                       │ Menu Bar
+│ [选择文件夹] [取消扫描]        已选择:xxx          [边栏▦] │ 工具栏
 ├─────────────────────────────────────────────────────────────┤
-│ [Scan] [Refresh] [Filter] [Export] [Settings]              │ Toolbar
+│ 💾 总大小 xxx   📄 文件 xxx   📁 文件夹 xxx               │ 统计条
+│ [■■■■■■■■■■■■■■■■■■■■■■■■■■] 类型比例条                    │
 ├─────────────────────────────────────────────────────────────┤
-│ ┌─Sidebar─┐ │ ┌──────── TreeMap View ────────┐ ┌Inspector┐ │
-│ │ Volumes  │ │ │                              │ │ Details │ │
-│ │ ├ Disk1  │ │ │    ┌─────┐ ┌──┐ ┌─────────┐ │ │ ┌─────┐ │ │
-│ │ ├ Disk2  │ │ │    │     │ │  │ │         │ │ │ │File │ │ │
-│ │ └ USB    │ │ │    │     │ │  │ │         │ │ │ │Info │ │ │
-│ │          │ │ │    └─────┘ └──┘ └─────────┘ │ │ └─────┘ │ │
-│ │ Filters  │ │ │                              │ │        │ │
-│ │ ├ Size   │ │ │    ┌───────────────────────┐ │ │ Colors │ │
-│ │ ├ Type   │ │ │    │                       │ │ │ ┌─────┐ │ │
-│ │ └ Date   │ │ │    │                       │ │ │ │     │ │ │
-│ │          │ │ │    └───────────────────────┘ │ │ └─────┘ │ │
-│ └──────────┘ │ └──────────────────────────────┘ └─────────┘ │
+│ ←返回上一级   根 › 子目录 › ...                            │ 导航条
+├──────────────────────────────────────────────────────────┬──────────────────┤
+│ ┌──────── TreeMap Canvas ──────────────┐ │ 类型分布         │
+│ │  ┌─────┐ ┌──┐ ┌─────────┐            │ │ ■ 图片 xxx 42%  │
+│ │  │     │ │  │ │         │            │ │ ■ 视频 xxx 28%  │
+│ │  └─────┘ └──┘ └─────────┘            │ │ ■ 文档 xxx  8%  │
+│ │  ┌──────────────────────┐ [其他 N 项] │ │ ...             │
+│ │  │                      │             │ └──────────────────┘
+│ │  └──────────────────────┘             │                   │
+│ └────────────────────────────────────────┘                   │
 ├─────────────────────────────────────────────────────────────┤
-│ Scanning: /Users/username/Documents... 47% │ 2.3GB scanned │ Status Bar
+│                                  CubeCleaner v0.3.2         │ 状态栏
 └─────────────────────────────────────────────────────────────┘
 ```
+- 单 Canvas 居中，详情面板为浮层（点击矩形弹出）。
+- 面包屑浮于 Canvas 顶部。
+- 右侧双区侧栏（图例上/详情下，可隐藏）；无 Inspector。
 
 #### 3.1.2 Responsive Layout
-- **Minimum Width**: 1000px
-- **Minimum Height**: 700px
-- **Sidebar**: Collapsible, 200-300px width
-- **Inspector**: Toggleable, 250px width
-- **TreeMap**: Expandable main content area
+- **Minimum Width**: 由 SwiftUI 默认窗口约束
+- **详情浮层**: maxWidth 500，点击空白或 × 关闭
+- **TreeMap Canvas**: 占据主内容区，resize 时 0.3s 防抖重算
+- **面包屑**: 水平滚动，超长不换行
 
-### 3.2 Menu Bar Structure
+### 3.2 Menu Bar Structure (计划中)
+
+> v0.2 尚未实现菜单栏与快捷键系统，以下为目标设计：
 
 #### 3.2.1 File Menu
 ```
@@ -126,22 +128,15 @@ View
 └── Full Screen                   ⌃⌘F
 ```
 
-### 3.3 Toolbar Design
-
-#### 3.3.1 Primary Actions
+### 3.3 Toolbar Design (v0.2 实际)
 ```
-[📁 Scan] [🔄 Refresh] [🔍 Search] [⚙️ Filter] [📊 Export] [⚙️ Settings]
+[选择文件夹]  [取消扫描(扫描中显示)]        状态信息(右对齐)
 ```
-
-#### 3.3.2 Toolbar Items Specification
-| Icon | Label | Action | Shortcut |
-|------|-------|---------|----------|
-| 📁 | Scan | Open folder selection dialog | ⌘N |
-| 🔄 | Refresh | Rescan current directory | ⌘R |
-| 🔍 | Search | Open search panel | ⌘F |
-| ⚙️ | Filter | Toggle filter panel | ⌘⇧F |
-| 📊 | Export | Export current view | ⌘E |
-| ⚙️ | Settings | Open preferences | ⌘, |
+| 控件 | 行为 |
+|------|------|
+| 选择文件夹 | 弹出文件选择器，选目录后开始扫描 |
+| 取消扫描 | 仅扫描中显示，取消当前 Task |
+| 状态信息 | 显示已选目录名、文件数、总大小 |
 
 ### 3.4 Sidebar Components
 
@@ -201,14 +196,15 @@ View
 
 ##### By File Type
 ```
-Documents:   Blue (#007AFF)
-Images:      Green (#34C759)
-Videos:      Red (#FF3B30)
-Audio:       Purple (#AF52DE)
-Archives:    Orange (#FF9500)
-Applications: Gray (#8E8E93)
-System:      Yellow (#FFCC00)
-Other:       Light Gray (#C7C7CC)
+Documents:    Electric Blue (#0A84FF)
+Images:       Green (#30D158)
+Videos:       Coral Red (#FF453A)
+Audio:        Purple (#BF5AF2)
+Archives:     Amber (#FF9F0A)
+Applications: Cyan (#64D2FF)
+System:       Yellow (#FFD60A)
+Other:        Pink (#FF375F)
+Folders:      Teal (#40C8E0)
 ```
 
 ##### By Size
@@ -220,13 +216,24 @@ Other:       Light Gray (#C7C7CC)
 > 1GB:       Red (#FF3B30)
 ```
 
-#### 3.5.3 Interactive Elements
-- **Click**: Navigate into folder
-- **Right-click**: Context menu
-- **Hover**: Show tooltip with file details
-- **Double-click**: Open file/reveal in Finder
-- **Cmd+click**: Multi-select
-- **Scroll**: Zoom in/out
+（v0.3.2）同类型内按大小调亮度：以该类型在当前布局子树内的最大块为基准，
+越大越接近原色(深)，越小越浅。文件夹固定色，不参与深度调节。
+
+#### 3.5.3 Interactive Elements (v0.3 已实现)
+- **单击**: 选中文件/文件夹，弹出详情面板
+- **双击**: 进入子目录（切换布局根）
+- **长按**: 在 Finder 中显示
+- **悬停**: 矩形高亮（透明度变化）
+- **点击图例类型**: 高亮 TreeMap 中该类型矩形，其它降至 20% 透明度；再点取消（v0.3）
+- **图例/详情双区侧栏**: 选中矩形后详情区刷新，图例区不变（v0.3.2）
+- **移到废纸篓**: 详情页垃圾桶按钮，二次确认后移废纸篓并重扫（v0.3.1）
+- **返回上一级**: 独立按钮，根目录禁用
+
+#### 计划中的交互
+- 右键上下文菜单
+- 滚轮/双指缩放平移
+- Cmd+click 多选
+- Quick Look 预览 (Space)
 
 ### 3.6 Inspector Panel
 

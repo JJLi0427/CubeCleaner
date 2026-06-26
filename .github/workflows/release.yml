@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: macos-15
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version string
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+            MARKETING="${VERSION#v}"
+            IS_PRERELEASE=false
+            TAG_NAME="${GITHUB_REF_NAME}"
+            RELEASE_NAME="${VERSION}"
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            DATE_STR=$(date -u +%Y%m%d)
+            VERSION="prerelease-${DATE_STR}-${SHORT_SHA}"
+            MARKETING="${VERSION}"
+            IS_PRERELEASE=true
+            TAG_NAME="${VERSION}"
+            RELEASE_NAME="CubeCleaner-${VERSION}"
+          fi
+          {
+            echo "version=${VERSION}"
+            echo "marketing=${MARKETING}"
+            echo "tag_name=${TAG_NAME}"
+            echo "release_name=${RELEASE_NAME}"
+            echo "is_prerelease=${IS_PRERELEASE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set marketing version
+        run: |
+          set -euo pipefail
+          # 本工程 GENERATE_INFOPLIST_FILE=YES（无 Info.plist 文件），agvtool 不落盘，
+          # 改用 sed 直接写 project.pbxproj 的 MARKETING_VERSION（Debug/Release 两处）。
+          MARKETING="${{ steps.version.outputs.marketing }}"
+          sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${MARKETING};/" \
+            CubeCleaner.xcodeproj/project.pbxproj
+          grep -n "MARKETING_VERSION" CubeCleaner.xcodeproj/project.pbxproj
+
+      - name: Build Release .app (ad-hoc signed)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project CubeCleaner.xcodeproj \
+            -scheme CubeCleaner \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -destination 'generic/platform=macOS' \
+            build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            ENABLE_HARDENED_RUNTIME=NO
+
+      - name: Locate built .app
+        id: app
+        run: |
+          set -euo pipefail
+          APP="build/DerivedData/Build/Products/Release/CubeCleaner.app"
+          [[ -d "$APP" ]] || { echo "::error::no .app at $APP"; find build/DerivedData/Build/Products -maxdepth 3 -name '*.app' || true; exit 1; }
+          echo "app_path=${APP}" >> "$GITHUB_OUTPUT"
+
+      - name: Create DMG (ad-hoc signed)
+        run: |
+          set -euo pipefail
+          APP="${{ steps.app.outputs.app_path }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG="build/CubeCleaner-${VERSION}.dmg"
+          STAGING="build/dmg-staging"
+          rm -rf "$STAGING" "$DMG"
+          mkdir -p "$STAGING"
+          cp -R "$APP" "$STAGING/"
+          hdiutil create -volname CubeCleaner -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+          codesign --force --sign - "$DMG"
+          echo "DMG=${DMG}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release and upload DMG
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: ${{ steps.version.outputs.release_name }}
+          prerelease: ${{ steps.version.outputs.is_prerelease }}
+          files: ${{ env.DMG }}
+          body: |
+            ## CubeCleaner ${{ steps.version.outputs.version }}
+
+            **Download:** `CubeCleaner-${{ steps.version.outputs.version }}.dmg`
+
+            > ⚠️ **Ad-hoc 签名，无 Developer ID、未公证。**
+            > 在其他 Mac 上首次打开会被 Gatekeeper 拦截，请：
+            > 1. 右键 **CubeCleaner.app** → **打开** → 确认，或
+            > 2. 拖到 /Applications 后运行 `xattr -dr com.apple.quarantine /Applications/CubeCleaner.app`
+
+            ---
+            - Commit: ${{ github.sha }}
+            - Ref: ${{ github.ref_name }}
+            - 配置: Release, ad-hoc 签名 (`CODE_SIGN_IDENTITY="-"`)
+            - 部署目标: macOS 15.5
+            - Runner: macos-15
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

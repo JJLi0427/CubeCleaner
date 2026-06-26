@@ -1,176 +1,56 @@
 # CubeCleaner 下一步开发指南
 
-## ✅ 当前状态 (v0.2-beta)
-- ✅ 项目构建成功
-- ✅ 完整后端服务实现
-- ✅ 前后端集成完成
-- ✅ 基础 TreeMap 可视化
-- ✅ 交互式详情面板
-- ✅ 文件系统访问权限配置
+> 本文档描述 v0.2-beta 之后的开发计划，按优先级分层。
+> 文档与代码现状对照见 docs/Requirements.md 与 docs/Programming-Design.md。
 
-## 🎯 已完成的核心功能
+## 当前状态 (v0.2-beta)
 
-### 后端架构
-- ✅ `FileSystemService`：异步文件扫描服务
-- ✅ `TreeMapLayoutCalculator`：TreeMap 布局算法
-- ✅ `ColorSchemeManager`：颜色编码管理
-- ✅ `TreeNode` 和 `FileSystemItem`：数据模型
+- ✅ getattrlistbulk 批量文件扫描
+- ✅ 二分法 TreeMap 布局 + 聚合"其他"块（面积守恒）
+- ✅ Canvas 渲染 + 点击/双击/长按交互
+- ✅ 双击进入子目录 + 面包屑导航
+- ✅ 详情面板、悬停高亮、Finder 集成
+- ⚠️ 扫描在 @MainActor 上跑同步 IO，大目录会卡 UI
+- ⚠️ 整棵 TreeNode 树常驻内存，百万级文件有压力
+- ❌ 无删除/Trash 功能（沙盒只读）
+- ❌ 无测试
+- ❌ 无 LICENSE 文件
 
-### 前端界面
-- ✅ 文件夹选择功能
-- ✅ TreeMap 可视化 (`TreeMapRectangleView`)
-- ✅ 详情面板 (`DetailsPanelView`)
-- ✅ 扫描进度显示
-- ✅ 工具栏和状态栏
-- ✅ 鼠标悬停效果
-- ✅ 在 Finder 中显示功能
+## P0 - 正确性 & 准确性
 
-## 🚀 下一阶段计划
+1. **[完成] TreeMap 聚合"其他"块 + 最小可见阈值** — 小文件归入"其他"，面积守恒。
+2. **[完成] 双击进入子目录 + 面包屑导航** — 长尾自然展开。
+3. **扫描移出主线程** — `FileSystemService` 去掉 `@MainActor`，`BulkFileScanner.scanDirectory` 在 `Task.detached` 或独立 actor 上执行，进度通过 `@Published` 回主线程。修复 PR-003。
+4. **聚合面积守恒的自动化验证** — 补单元测试断言"保留项 + 其他块面积 ≈ 父目录面积"（依赖 P1 测试基建）。
 
-### Phase 1: 用户体验优化 (高优先级)
-1. **TreeMap 导航增强**
-   - [ ] 双击进入子目录
-   - [ ] 面包屑导航显示当前路径
-   - [ ] 缩放和平移功能
-   - [ ] 右键菜单（显示/隐藏、删除等）
+## P1 - 架构 & 可维护性
 
-2. **搜索和过滤**
-   - [ ] 文件名搜索功能
-   - [ ] 文件类型过滤
-   - [ ] 大小范围过滤
-   - [ ] 修改时间过滤
+1. **拆分 CubeCleanerBackend.swift (1261 行)** →
+   - `Models/`：`FileSystemItem`、`TreeNode`、`FileType`
+   - `Scanning/`：`BulkFileScanner`
+   - `Layout/`：`BinaryTreeMapCalculator`、`TreeMapRectangle`、`ColorSchemeManager`
+   - `Services/`：`FileSystemService`
+2. **拆分 ContentView.swift (670 行)** → `TreeMapCanvasView`、`DetailsPanelView`、`BreadcrumbView`、`ActionsView` 各自独立文件。
+3. **补单元测试** — 覆盖：布局面积守恒、聚合阈值逻辑、`getattrlistbulk` buffer 解析、`findRectangleAt` hit-test。
+4. **详情面板点击冲突修复** — 外层 `.onTapGesture` 吞掉内部按钮点击，改用背景遮罩或显式按钮命中区。
 
-3. **界面完善**
-   - [ ] 快捷键支持 (Cmd+O, Cmd+F 等)
-   - [ ] 工具提示改进
-   - [ ] 状态栏信息优化
-   - [ ] 多窗口支持
+## P2 - 功能 & 生产化
 
-### Phase 2: 高级功能 (中优先级)
-1. **数据分析**
-   - [ ] 文件类型统计图表
-   - [ ] 重复文件检测
-   - [ ] 空文件夹检测
-   - [ ] 最大文件识别
+1. **删除/Trash** — entitlements 加 `com.apple.security.files.user-selected.read-write`，实现移到废纸篓 + 二次确认（FR-031）。
+2. **硬链接 inode 去重 + 符号链接防环** — 用 `getattrlist` 取 `ATTR_CMN_LINKID`/inode 去重；符号链接用访问过的 inode 集合防环（FR-006）。
+3. **搜索过滤** — 文件名、大小范围、文件类型、修改时间（FR-028/032-035）。
+4. **导出** — PNG 图片、CSV/JSON 数据（FR-048/049）。
+5. **分发** — 代码签名公证、DMG 打包、补 LICENSE 文件、App Store 准备。
+6. **主题与颜色方案** — 深浅色完善、多颜色方案切换（按大小/日期/扩展名，FR-012-021）。
 
-2. **导出功能**
-   - [ ] 导出分析报告 (PDF/HTML)
-   - [ ] 导出 TreeMap 图片
-   - [ ] CSV/JSON 数据导出
-   - [ ] 自定义报告模板
+## 版本里程碑
 
-3. **性能优化**
-   - [ ] 大文件夹的渐进式加载
-   - [ ] 虚拟化长列表
-   - [ ] 内存使用优化
-   - [ ] 多线程扫描优化
-
-### Phase 3: 生产就绪 (低优先级)
-1. **应用程序功能**
-   - [ ] 应用图标设计
-   - [ ] 多语言支持 (英文/中文)
-   - [ ] 帮助文档和教程
-   - [ ] 关于页面和版本信息
-
-2. **可定制性**
-   - [ ] 颜色主题选择
-   - [ ] 界面布局设置
-   - [ ] 文件类型颜色定制
-   - [ ] 扫描排除规则配置
-
-3. **安装和分发**
-   - [ ] 代码签名和公证
-   - [ ] DMG 安装包制作
-   - [ ] App Store 准备
-   - [ ] 自动更新功能
-
-## 📋 即将开始的任务 (下次迭代)
-
-### 1. TreeMap 双击导航
-```swift
-// 在 TreeMapRectangleView 中添加
-.onTapGesture(count: 2) {
-    if rectangle.node.item.isDirectory {
-        // 导航到子目录
-        navigationController.navigateToDirectory(rectangle.node)
-    }
-}
-```
-
-### 2. 面包屑导航
-创建 `BreadcrumbView` 组件显示当前路径并支持快速返回。
-
-### 3. 搜索功能  
-添加搜索栏和过滤逻辑，实时过滤 TreeMap 显示内容。
-
-## 🔧 技术债务和改进
-
-### 代码组织
-- [ ] 将大型视图组件分离到独立文件
-- [ ] 添加单元测试覆盖
-- [ ] 错误处理标准化
-- [ ] 日志记录系统
-
-### 文档完善
-- [ ] API 文档生成
-- [ ] 用户使用手册
-- [ ] 开发者贡献指南
-- [ ] 架构设计文档
-
-## 🎯 版本里程碑
-- **v0.2** ✅: 基础 TreeMap + 详情面板 (当前版本)
-- **v0.3**: 导航和搜索功能
-- **v0.4**: 高级分析和导出功能  
-- **v0.5**: 性能优化和可定制性
-- **v1.0**: 生产就绪版本
-
-## 💡 下次开发建议
-
-当前项目已经有了坚实的基础，下次开发时建议从以下任务开始：
-
-1. **TreeMap 双击导航** - 提升交互体验
-2. **面包屑导航** - 改善导航体验
-3. **搜索功能** - 增加实用性
-
-这些功能将显著提升用户体验，让应用更接近 WizTree 的功能水平。
-├── Views/
-│   ├── ContentView.swift
-│   ├── TreeMapView.swift
-│   ├── ProgressView.swift
-│   └── SettingsView.swift
-├── Services/
-│   ├── FileSystemService.swift
-│   ├── ColorSchemeManager.swift
-│   └── TreeMapLayoutCalculator.swift
-├── Models/
-│   ├── FileSystemItem.swift
-│   ├── TreeNode.swift
-│   └── TreeMapRectangle.swift
-└── Utils/
-    ├── FileTypeExtensions.swift
-    └── FormatterExtensions.swift
-```
-
-## 测试建议
-
-1. **小型目录测试**: 先用少量文件的目录测试基础功能
-2. **权限测试**: 测试各种文件夹的访问权限
-3. **性能测试**: 测试大型目录的扫描性能
-4. **UI响应性测试**: 确保扫描过程中UI不卡顿
-
-## 已知问题
-
-1. 当前前端还未集成后端服务
-2. 没有实际的TreeMap可视化
-3. 缺少用户反馈机制
-
-## 下次迭代目标
-
-- [ ] 完成后端前端集成
-- [ ] 实现基础TreeMap显示
-- [ ] 添加扫描进度显示
-- [ ] 完善错误处理
+- **v0.2** ✅：基础 TreeMap + 聚合 + 导航 + 详情面板（当前）
+- **v0.3**：扫描移出主线程、P0/P1 架构拆分与测试
+- **v0.4**：删除、搜索过滤、硬链接处理
+- **v0.5**：导出、主题、性能优化
+- **v1.0**：生产就绪（签名、打包、App Store）
 
 ---
 
-*更新时间: 2025-08-12*
+*更新时间：2026-06-24*

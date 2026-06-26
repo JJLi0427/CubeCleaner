@@ -14,8 +14,20 @@ struct ContentView: View {
     @State private var selectedPath: URL?
     @State private var hoveredNode: TreeNode?
     @State private var selectedNode: TreeNode?
-    @State private var showingDetails = false
+    @State private var currentRoot: TreeNode?
     @State private var showingFilePicker = false
+
+    // v0.3: 图例侧栏 + 类型高亮 + 类型分布
+    @State private var showLegend: Bool = true
+    @State private var highlightedFileType: FileType? = nil
+    @State private var typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry] = []
+
+    // v0.3.1/v0.3.2: 侧栏双区 + 删除 + 钻取统计刷新 + 类型内深度配色
+    @State private var scanRootURL: URL?
+    @State private var showingDeleteConfirm = false
+    @State private var subtreeTotalSize: Int64 = 0
+    @State private var subtreeFileCount: Int = 0
+    @State private var subtreeFolderCount: Int = 0
 
     // 性能优化相关状态
     @State private var isResizing = false
@@ -45,32 +57,68 @@ struct ContentView: View {
 
                 Spacer()
 
-                // 状态信息
-                VStack(alignment: .trailing, spacing: 2) {
-                    if let selectedPath = selectedPath {
-                        Text("已选择: \(selectedPath.lastPathComponent)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    if fileSystemService.rootNode != nil {
-                        Text(
-                            "文件总数: \(fileSystemService.filesScanned) | 总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))"
-                        )
-                        .font(.caption2)
+                if let selectedPath = selectedPath {
+                    Text("已选择: \(selectedPath.lastPathComponent)")
+                        .font(.caption)
                         .foregroundColor(.secondary)
-                    }
+                        .lineLimit(1)
                 }
+
+                Button {
+                    showLegend.toggle()
+                } label: {
+                    Image(systemName: showLegend ? "sidebar.left" : "sidebar.right")
+                }
+                .buttonStyle(.bordered)
+                .help(showLegend ? "隐藏类型图例" : "显示类型图例")
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
 
             Divider()
 
-            // 主内容区域
+            // 统计条 + 类型比例条
+            if fileSystemService.rootNode != nil || fileSystemService.isScanning {
+                StatsBarView(
+                    totalSize: subtreeTotalSize,
+                    fileCount: subtreeFileCount,
+                    folderCount: subtreeFolderCount,
+                    isScanning: fileSystemService.isScanning
+                )
+                TypeRatioBarView(entries: typeBreakdown, isScanning: fileSystemService.isScanning)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                    .background(Color(.controlBackgroundColor))
+                Divider()
+            }
+
+            // 主内容区域：Canvas + 图例侧栏
             GeometryReader { geometry in
-                ZStack {
-                    Color(.controlBackgroundColor)
+                HStack(spacing: 0) {
+                    ZStack {
+                        Color(.controlBackgroundColor)
+
+                    // 导航条（返回按钮 + 面包屑）- 浮于 TreeMap 顶部
+                    VStack(spacing: 0) {
+                        NavigationBarView(
+                            currentRoot: currentRoot,
+                            rootNode: fileSystemService.rootNode,
+                            onBack: {
+                                currentRoot = currentRoot?.parent
+                                Task {
+                                    await updateLayoutOptimized(size: geometry.size)
+                                }
+                            },
+                            onSelectBreadcrumb: { node in
+                                currentRoot = node
+                                Task {
+                                    await updateLayoutOptimized(size: geometry.size)
+                                }
+                            }
+                        )
+                        Spacer()
+                    }
+                    .zIndex(1)
 
                     if rectangles.isEmpty && !fileSystemService.isScanning && !isResizing
                         && !isLayouting
@@ -97,15 +145,25 @@ struct ContentView: View {
                         // TreeMap可视化 - 使用Canvas避免层级问题
                         TreeMapCanvasView(
                             rectangles: rectangles,
+                            highlightedFileType: highlightedFileType,
                             onTap: { rectangle in
                                 selectedNode = rectangle.node
-                                showingDetails = true
                             },
                             onLongPress: { rectangle in
                                 NSWorkspace.shared.selectFile(
                                     rectangle.node.item.path.path,
                                     inFileViewerRootedAtPath: ""
                                 )
+                            },
+                            onDoubleTap: { rectangle in
+                                // 目录可双击进入；聚合的"其他"块也可双击钻取内部小文件
+                                let node = rectangle.node
+                                if node.isAggregated || node.item.isDirectory {
+                                    currentRoot = node
+                                    Task {
+                                        await updateLayoutOptimized(size: geometry.size)
+                                    }
+                                }
                             }
                         )
                         .clipped()
@@ -163,7 +221,25 @@ struct ContentView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                }
+                    }  // close ZStack
+
+                    // 侧栏（图例上/详情下双区）
+                    if showLegend {
+                        SidebarDualView(
+                            selectedNode: $selectedNode,
+                            typeBreakdown: typeBreakdown,
+                            highlightedFileType: highlightedFileType,
+                            onToggleHighlight: { type in
+                                highlightedFileType = (highlightedFileType == type) ? nil : type
+                            },
+                            fileSystemService: fileSystemService,
+                            scanRootURL: scanRootURL,
+                            onRequestDelete: { _ in
+                                showingDeleteConfirm = true
+                            }
+                        )
+                    }
+                }  // close HStack
                 .onAppear {
                     Task {
                         await updateLayoutOptimized(size: geometry.size)
@@ -172,46 +248,56 @@ struct ContentView: View {
                 .onChange(of: geometry.size) { _, newSize in
                     handleGeometryChange(newSize: newSize)
                 }
-                .onChange(of: fileSystemService.rootNode) { _, _ in
+                .onChange(of: fileSystemService.rootNode) { _, newNode in
+                    currentRoot = newNode
                     Task {
                         await updateLayoutOptimized(size: geometry.size)
                     }
                 }
-
-                // 详情面板
-                if showingDetails {
-                    DetailsPanelView(
-                        selectedNode: $selectedNode,
-                        showingDetails: $showingDetails,
-                        fileSystemService: fileSystemService
-                    )
-                }
             }
 
-            // 状态栏
+            // 状态栏（统计已上移顶部，此处仅留错误/就绪/版本）
             HStack {
-                if let rootNode = fileSystemService.rootNode {
-                    Text(
-                        "总大小: \(ByteCountFormatter.string(fromByteCount: rootNode.totalSize, countStyle: .file))"
-                    )
-                    Spacer()
-                    Text("文件数: \(fileSystemService.filesScanned)")
-                } else if let errorMessage = fileSystemService.errorMessage {
+                if let errorMessage = fileSystemService.errorMessage {
                     Text("错误: \(errorMessage)")
                         .foregroundColor(.red)
                     Spacer()
-                } else {
+                } else if fileSystemService.rootNode == nil {
                     Text("就绪")
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text("CubeCleaner v0.1")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                } else {
+                    Spacer()
                 }
+                Text("CubeCleaner v0.3.1")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding(.horizontal)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
             .background(Color(.controlBackgroundColor))
+        }
+        .confirmationDialog(
+            "移到废纸篓",
+            isPresented: $showingDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("移到废纸篓", role: .destructive) {
+                if let node = selectedNode {
+                    fileSystemService.trashAndRescan(
+                        deleteURL: node.item.path,
+                        scanRootURL: scanRootURL
+                    )
+                    selectedNode = nil
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            if let node = selectedNode {
+                Text("将把「\(node.item.name)」（\(ByteCountFormatter.string(fromByteCount: node.totalSize, countStyle: .file))）移到废纸篓，可在废纸篓中恢复。确定继续？")
+            } else {
+                Text("将把选中项移到废纸篓，可在废纸篓中恢复。确定继续？")
+            }
         }
         .fileImporter(
             isPresented: $showingFilePicker,
@@ -222,6 +308,7 @@ struct ContentView: View {
             case .success(let urls):
                 if let url = urls.first {
                     selectedPath = url
+                    scanRootURL = url
                     fileSystemService.scanDirectory(at: url)
                 }
             case .failure(let error):
@@ -260,7 +347,7 @@ struct ContentView: View {
      * 优化的异步布局更新方法
      */
     private func updateLayoutOptimized(size: CGSize) async {
-        guard let rootNode = fileSystemService.rootNode,
+        guard let rootNode = currentRoot ?? fileSystemService.rootNode,
             size.width > 0,
             size.height > 0
         else {
@@ -290,6 +377,10 @@ struct ContentView: View {
             withAnimation(.easeOut(duration: 0.25)) {
                 rectangles = newRectangles
                 isLayouting = false
+                typeBreakdown = ColorSchemeManager.shared.typeBreakdown(for: rootNode)
+                subtreeTotalSize = rootNode.totalSize
+                subtreeFileCount = ColorSchemeManager.shared.fileCountInSubtree(rootNode)
+                subtreeFolderCount = ColorSchemeManager.shared.folderCountInSubtree(rootNode)
             }
         }
 
@@ -308,8 +399,10 @@ struct ContentView: View {
 // MARK: - TreeMap Canvas View (无层级问题的解决方案)
 struct TreeMapCanvasView: View {
     let rectangles: [TreeMapRectangle]
+    let highlightedFileType: FileType?
     let onTap: (TreeMapRectangle) -> Void
     let onLongPress: (TreeMapRectangle) -> Void
+    let onDoubleTap: (TreeMapRectangle) -> Void
 
     @State private var hoveredRectangle: TreeMapRectangle?
 
@@ -321,14 +414,20 @@ struct TreeMapCanvasView: View {
             }
         }
         .gesture(
-            // 统一的点击手势处理 - 手动计算点击位置
-            DragGesture(minimumDistance: 0)
+            // 双击优先；若未触发双击则作为单击。避免单击打开详情浮层吞掉双击的第二下。
+            SpatialTapGesture(count: 2)
                 .onEnded { value in
-                    let location = value.location
-                    if let hitRectangle = findRectangleAt(location) {
-                        onTap(hitRectangle)
+                    if let hitRectangle = findRectangleAt(value.location) {
+                        onDoubleTap(hitRectangle)
                     }
                 }
+                .exclusively(before: SpatialTapGesture()
+                    .onEnded { value in
+                        if let hitRectangle = findRectangleAt(value.location) {
+                            onTap(hitRectangle)
+                        }
+                    }
+                )
         )
         .gesture(
             // 长按手势
@@ -347,7 +446,23 @@ struct TreeMapCanvasView: View {
                     }
                 }
         )
-        .onHover { _ in }  // 保持悬停检测接口
+        .onContinuousHover { phase in
+            // 复活悬停高亮：根据鼠标位置实时更新 hoveredRectangle
+            switch phase {
+            case .active(let location):
+                hoveredRectangle = findRectangleAt(location)
+            case .ended:
+                hoveredRectangle = nil
+            }
+        }
+    }
+
+    /// 当前矩形是否属于高亮类型（文件夹在存在高亮时视为不高亮）
+    private func isHighlighted(_ rectangle: TreeMapRectangle) -> Bool {
+        guard let highlightedFileType else { return true }
+        if rectangle.node.item.isDirectory { return false }
+        let ft = FileType.from(extension: rectangle.node.item.fileExtension)
+        return ft == highlightedFileType
     }
 
     /**
@@ -357,10 +472,14 @@ struct TreeMapCanvasView: View {
         let rect = rectangle.rect
         let isHovered = hoveredRectangle?.id == rectangle.id
 
-        // 绘制背景
+        // 绘制背景 - 颜色深度由 depthColor 承载(亮度通道)，此处透明度用常量；
+        // 高亮类型保持原色，其它降透
+        let dimmed = highlightedFileType != nil && !isHighlighted(rectangle)
+        let baseOpacity: Double = isHovered ? 0.95 : 0.85
+        let opacity = dimmed ? baseOpacity * 0.2 : baseOpacity
         context.fill(
             Path(rect),
-            with: .color(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
+            with: .color(rectangle.color.opacity(opacity))
         )
 
         // 绘制边框
@@ -426,158 +545,17 @@ struct TreeMapCanvasView: View {
     }
 }
 
-struct TreeMapRectangleView: View {
-    let rectangle: TreeMapRectangle
-    let onTap: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Rectangle()
-            .fill(rectangle.color.opacity(isHovered ? 0.95 : 0.8))
-            .stroke(
-                rectangle.isImportant ? Color.primary.opacity(0.4) : Color.primary.opacity(0.2),
-                lineWidth: rectangle.isImportant ? 1.5 : 0.5
-            )
-            .shadow(
-                color: .black.opacity(isHovered ? 0.3 : 0.1),
-                radius: isHovered ? 3 : 1
-            )
-            .overlay {
-                // 内容标签
-                if rectangle.shouldShowLabel {
-                    VStack(spacing: 2) {
-                        // 文件/文件夹名称
-                        if !rectangle.displayName.isEmpty {
-                            Text(rectangle.displayName)
-                                .font(.system(size: min(11, rectangle.rect.height / 4)))
-                                .fontWeight(rectangle.isImportant ? .semibold : .medium)
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
-                                .multilineTextAlignment(.center)
-                        }
-
-                        // 大小信息
-                        if rectangle.canShowSize {
-                            Text(rectangle.formattedSize)
-                                .font(.system(size: min(9, rectangle.rect.height / 6)))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-
-                        // 详细信息（文件夹子项数量）
-                        if rectangle.canShowDetails && rectangle.node.item.isDirectory {
-                            Text(rectangle.childrenDescription)
-                                .font(.system(size: min(8, rectangle.rect.height / 8)))
-                                .foregroundColor(.secondary.opacity(0.8))
-                                .lineLimit(1)
-                        }
-                    }
-                    .padding(2)
-                    .frame(maxWidth: rectangle.rect.width - 4, maxHeight: rectangle.rect.height - 4)
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                // 文件类型图标（仅对重要文件显示）
-                if rectangle.isImportant && !rectangle.node.item.isDirectory
-                    && rectangle.rect.width > 30 && rectangle.rect.height > 30
-                {
-                    Image(systemName: iconForFileType(rectangle.node.item.fileExtension))
-                        .font(.system(size: min(12, rectangle.rect.width / 8)))
-                        .foregroundColor(.primary.opacity(0.6))
-                        .padding(4)
-                }
-            }
-            .frame(width: rectangle.rect.width, height: rectangle.rect.height)
-            .position(
-                x: rectangle.rect.minX + rectangle.rect.width / 2,
-                y: rectangle.rect.minY + rectangle.rect.height / 2
-            )
-            .contentShape(Rectangle())  // 确保整个矩形区域都可点击
-            .onTapGesture {
-                onTap()
-            }
-            .onLongPressGesture {
-                // 长按打开文件或文件夹
-                NSWorkspace.shared.selectFile(
-                    rectangle.node.item.path.path,
-                    inFileViewerRootedAtPath: ""
-                )
-            }
-            .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isHovered = hovering
-                }
-            }
-            .help(makeTooltipText())
-    }
-
-    /**
-     * 根据文件扩展名返回合适的图标
-     */
-    private func iconForFileType(_ extension: String) -> String {
-        let ext = `extension`.lowercased()
-        switch ext {
-        case "jpg", "jpeg", "png", "gif", "bmp", "tiff", "svg", "webp", "heic":
-            return "photo"
-        case "mp4", "mov", "avi", "mkv", "wmv", "flv", "m4v":
-            return "play.rectangle"
-        case "mp3", "wav", "aac", "flac", "ogg", "m4a":
-            return "music.note"
-        case "pdf":
-            return "doc.richtext"
-        case "txt", "md":
-            return "doc.text"
-        case "zip", "rar", "7z", "tar", "gz":
-            return "archivebox"
-        case "app":
-            return "app"
-        case "dmg":
-            return "externaldrive"
-        default:
-            return "doc"
-        }
-    }
-
-    /**
-     * 生成工具提示文本
-     */
-    private func makeTooltipText() -> String {
-        var tooltip = "\(rectangle.node.item.name)\n"
-        tooltip += "大小: \(rectangle.formattedSize)\n"
-        tooltip += "类型: \(rectangle.node.item.isDirectory ? "文件夹" : "文件")\n"
-
-        if rectangle.node.item.isDirectory && !rectangle.node.children.isEmpty {
-            tooltip += "包含: \(rectangle.node.children.count) 项\n"
-        }
-
-        tooltip += "路径: \(rectangle.node.item.path.path)"
-        return tooltip
-    }
-}
-
-// MARK: - 详情面板视图
-struct DetailsPanelView: View {
+// MARK: - 详情侧栏视图（原中间浮层，改为侧栏页）
+struct DetailsSidebarView: View {
     @Binding var selectedNode: TreeNode?
-    @Binding var showingDetails: Bool
     let fileSystemService: FileSystemService
+    let scanRootURL: URL?
+    let onRequestDelete: (TreeNode) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("文件详情")
-                    .font(.headline)
-
-                Spacer()
-
-                Button("x") {
-                    showingDetails = false
-                    selectedNode = nil
-                }
-                .buttonStyle(.plain)
-            }
-
-            if let selectedNode = selectedNode {
-                VStack(alignment: .leading, spacing: 8) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let selectedNode = selectedNode {
                     Text(selectedNode.item.name)
                         .font(.title3)
                         .fontWeight(.medium)
@@ -608,27 +586,22 @@ struct DetailsPanelView: View {
                             })
                     }
 
-                    Spacer()
-
                     ActionsView(
                         selectedNode: selectedNode,
                         fileSystemService: fileSystemService,
-                        onClose: {
-                            showingDetails = false
-                            self.selectedNode = nil
-                        }
+                        scanRootURL: scanRootURL,
+                        onDelete: { onRequestDelete(selectedNode) }
                     )
+                } else {
+                    Text("点击矩形查看详情")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 40)
                 }
             }
-        }
-        .padding()
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-        .frame(maxWidth: 500)
-        .background(Color(NSColor.controlBackgroundColor))
-        .onTapGesture {
-            showingDetails = false
-            selectedNode = nil
+            .padding(.horizontal)
+            .padding(.top, 8)
         }
     }
 }
@@ -686,7 +659,8 @@ struct ChildrenListView: View {
 struct ActionsView: View {
     let selectedNode: TreeNode
     let fileSystemService: FileSystemService
-    let onClose: () -> Void
+    let scanRootURL: URL?
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -698,14 +672,291 @@ struct ActionsView: View {
             }
             .buttonStyle(.borderedProminent)
 
+            Button {
+                onDelete()
+            } label: {
+                Label("移到废纸篓", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+
             if selectedNode.item.isDirectory {
                 Button("重新扫描此文件夹") {
                     fileSystemService.scanDirectory(at: selectedNode.item.path)
-                    onClose()
                 }
                 .buttonStyle(.bordered)
             }
         }
+    }
+}
+
+// MARK: - 面包屑导航视图
+struct BreadcrumbView: View {
+    let currentRoot: TreeNode?
+    let onSelect: (TreeNode) -> Void
+
+    /// 从扫描根到 currentRoot 的路径
+    private var path: [TreeNode] {
+        var nodes: [TreeNode] = []
+        var current: TreeNode? = currentRoot
+        while let node = current {
+            nodes.insert(node, at: 0)
+            current = node.parent
+        }
+        return nodes
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(Array(path.enumerated()), id: \.element.id) { index, node in
+                    if index > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Button(action: { onSelect(node) }) {
+                        Text(node.item.name)
+                            .font(.caption)
+                            .foregroundColor(index == path.count - 1 ? .primary : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+}
+
+// MARK: - 统计条视图
+struct StatsBarView: View {
+    let totalSize: Int64
+    let fileCount: Int
+    let folderCount: Int
+    let isScanning: Bool
+
+    var body: some View {
+        HStack(spacing: 24) {
+            MetricBlock(
+                icon: "externaldrive.fill",
+                value: ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file),
+                label: "总大小"
+            )
+            MetricBlock(
+                icon: "doc.fill",
+                value: "\(fileCount)",
+                label: "文件"
+            )
+            MetricBlock(
+                icon: "folder.fill",
+                value: "\(folderCount)",
+                label: "文件夹"
+            )
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color(.controlBackgroundColor))
+    }
+}
+
+struct MetricBlock: View {
+    let icon: String
+    let value: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(.accentColor)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - 类型占比比例条
+struct TypeRatioBarView: View {
+    let entries: [ColorSchemeManager.TypeBreakdownEntry]
+    let isScanning: Bool
+
+    var body: some View {
+        if isScanning {
+            ProgressView()
+                .progressViewStyle(.linear)
+                .frame(height: 10)
+        } else {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary)
+                    HStack(spacing: 0) {
+                        ForEach(entries.filter { $0.size > 0 }) { entry in
+                            entry.color
+                                .frame(width: geo.size.width * entry.ratio)
+                        }
+                    }
+                    .clipShape(Capsule())
+                }
+            }
+            .frame(height: 10)
+            .help(tooltipText)
+        }
+    }
+
+    /// 整条 tooltip（首版不分区段命中）
+    private var tooltipText: String {
+        guard !entries.isEmpty else { return "无数据" }
+        let total = entries.first?.total ?? 0
+        return entries
+            .filter { $0.size > 0 }
+            .map { e in
+                let pct = total > 0 ? Int(Double(e.size) / Double(total) * 100) : 0
+                return "\(e.type.displayName) \(ByteCountFormatter.string(fromByteCount: e.size, countStyle: .file)) \(pct)%"
+            }
+            .joined(separator: "\n")
+    }
+}
+
+// MARK: - 导航条视图（返回按钮 + 面包屑）
+struct NavigationBarView: View {
+    let currentRoot: TreeNode?
+    let rootNode: TreeNode?
+    let onBack: () -> Void
+    let onSelectBreadcrumb: (TreeNode) -> Void
+
+    /// 是否在根目录（返回按钮禁用条件）
+    private var isAtRoot: Bool {
+        currentRoot == nil || currentRoot?.id == rootNode?.id
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onBack) {
+                Label("返回上一级", systemImage: "chevron.backward")
+            }
+            .buttonStyle(.bordered)
+            .disabled(isAtRoot)
+
+            Divider()
+                .frame(height: 16)
+
+            BreadcrumbView(currentRoot: currentRoot, onSelect: onSelectBreadcrumb)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial)
+    }
+}
+
+// MARK: - 侧栏上下堆叠两区（图例上、详情下，不分页）
+struct SidebarDualView: View {
+    let selectedNode: Binding<TreeNode?>
+    let typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry]
+    let highlightedFileType: FileType?
+    let onToggleHighlight: (FileType) -> Void
+    let fileSystemService: FileSystemService
+    let scanRootURL: URL?
+    let onRequestDelete: (TreeNode) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 上半：图例区（弹性高度，可滚动）
+            LegendSidebarView(
+                entries: typeBreakdown,
+                highlightedFileType: highlightedFileType,
+                onToggleHighlight: onToggleHighlight
+            )
+            .frame(maxHeight: .infinity)
+            Divider()
+            // 下半：详情区（按内容，可滚动）
+            DetailsSidebarView(
+                selectedNode: selectedNode,
+                fileSystemService: fileSystemService,
+                scanRootURL: scanRootURL,
+                onRequestDelete: onRequestDelete
+            )
+            .frame(minHeight: 240)
+        }
+        .frame(width: 200)
+        .background(.regularMaterial)
+    }
+}
+
+// MARK: - 图例侧栏视图
+struct LegendSidebarView: View {
+    let entries: [ColorSchemeManager.TypeBreakdownEntry]
+    let highlightedFileType: FileType?
+    let onToggleHighlight: (FileType) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("类型分布")
+                .font(.headline)
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(entries.filter { $0.size > 0 }) { entry in
+                        LegendRow(
+                            entry: entry,
+                            isHighlighted: highlightedFileType == entry.type
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { onToggleHighlight(entry.type) }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+        }
+        .background(.regularMaterial)
+    }
+}
+
+struct LegendRow: View {
+    let entry: ColorSchemeManager.TypeBreakdownEntry
+    let isHighlighted: Bool
+
+    var body: some View {
+        let pct = entry.total > 0 ? Int(Double(entry.size) / Double(entry.total) * 100) : 0
+        return HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(entry.color)
+                .frame(width: 12, height: 12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(isHighlighted ? Color.primary : Color.clear, lineWidth: 2)
+                )
+            Text(entry.type.displayName)
+                .font(.caption)
+                .foregroundColor(.primary)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file))
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                Text("\(pct)%")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(isHighlighted ? Color.accentColor.opacity(0.15) : Color.clear)
+        .cornerRadius(4)
     }
 }
 
