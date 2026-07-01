@@ -31,6 +31,7 @@ struct ContentView: View {
 
     // v0.3: 图例侧栏 + 类型高亮 + 类型分布
     @State private var showLegend: Bool = true
+    @State private var isAnimatingSidebar: Bool = false
     @State private var highlightedFileType: FileType? = nil
     @State private var typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry] = []
 
@@ -77,7 +78,10 @@ struct ContentView: View {
                 }
 
                 Button {
-                    showLegend.toggle()
+                    isAnimatingSidebar = true
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        showLegend.toggle()
+                    }
                 } label: {
                     Image(systemName: showLegend ? "sidebar.left" : "sidebar.right")
                 }
@@ -116,13 +120,17 @@ struct ContentView: View {
                             currentRoot: currentRoot,
                             rootNode: fileSystemService.rootNode,
                             onBack: {
-                                currentRoot = currentRoot?.parent
+                                withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                                    currentRoot = currentRoot?.parent
+                                }
                                 Task {
                                     await updateLayoutOptimized(size: geometry.size)
                                 }
                             },
                             onSelectBreadcrumb: { node in
-                                currentRoot = node
+                                withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                                    currentRoot = node
+                                }
                                 Task {
                                     await updateLayoutOptimized(size: geometry.size)
                                 }
@@ -159,7 +167,9 @@ struct ContentView: View {
                             rectangles: rectangles,
                             highlightedFileType: highlightedFileType,
                             onTap: { rectangle in
-                                selectedNode = rectangle.node
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                    selectedNode = rectangle.node
+                                }
                             },
                             onLongPress: { rectangle in
                                 NSWorkspace.shared.selectFile(
@@ -171,7 +181,9 @@ struct ContentView: View {
                                 // 目录可双击进入；聚合的"其他"块也可双击钻取内部小文件
                                 let node = rectangle.node
                                 if node.isAggregated || node.item.isDirectory {
-                                    currentRoot = node
+                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                                        currentRoot = node
+                                    }
                                     Task {
                                         await updateLayoutOptimized(size: geometry.size)
                                     }
@@ -250,6 +262,7 @@ struct ContentView: View {
                                 showingDeleteConfirm = true
                             }
                         )
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }  // close HStack
                 .onAppear {
@@ -261,7 +274,9 @@ struct ContentView: View {
                     handleGeometryChange(newSize: newSize)
                 }
                 .onChange(of: fileSystemService.rootNode) { _, newNode in
-                    currentRoot = newNode
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        currentRoot = newNode
+                    }
                     Task {
                         await updateLayoutOptimized(size: geometry.size)
                     }
@@ -340,8 +355,10 @@ struct ContentView: View {
         layoutTask?.cancel()
         resizeTimer?.invalidate()
 
-        // 立即清除内容，显示resize状态
-        if !isResizing {
+        // 侧栏显隐驱动的尺寸变化不清空矩形（动画期间），仅等停手后重算
+        if isAnimatingSidebar {
+            isAnimatingSidebar = false
+        } else if !isResizing {
             isResizing = true
             rectangles = []  // 清除所有矩形
         }
@@ -568,52 +585,59 @@ struct DetailsSidebarView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if let selectedNode = selectedNode {
-                    Text(selectedNode.item.name)
-                        .font(.title3)
-                        .fontWeight(.medium)
+                    Group {
+                        Text(selectedNode.item.name)
+                            .font(.title3)
+                            .fontWeight(.medium)
 
-                    Text(
-                        "大小: \(ByteCountFormatter.string(fromByteCount: selectedNode.totalSize, countStyle: .file))"
-                    )
-                    .font(.body)
-
-                    Text("类型: \(selectedNode.item.isDirectory ? "文件夹" : "文件")")
+                        Text(
+                            "大小: \(ByteCountFormatter.string(fromByteCount: selectedNode.totalSize, countStyle: .file))"
+                        )
                         .font(.body)
 
-                    Text("路径:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        Text("类型: \(selectedNode.item.isDirectory ? "文件夹" : "文件")")
+                            .font(.body)
 
-                    Text(selectedNode.item.path.path)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("路径:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
 
-                    if selectedNode.item.isDirectory && !selectedNode.children.isEmpty {
-                        ChildrenListView(
+                        Text(selectedNode.item.path.path)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if selectedNode.item.isDirectory && !selectedNode.children.isEmpty {
+                            ChildrenListView(
+                                selectedNode: selectedNode,
+                                onSelectChild: { child in
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                        self.selectedNode = child
+                                    }
+                                })
+                        }
+
+                        ActionsView(
                             selectedNode: selectedNode,
-                            onSelectChild: { child in
-                                self.selectedNode = child
-                            })
+                            fileSystemService: fileSystemService,
+                            scanRootURL: scanRootURL,
+                            onDelete: { onRequestDelete(selectedNode) }
+                        )
                     }
-
-                    ActionsView(
-                        selectedNode: selectedNode,
-                        fileSystemService: fileSystemService,
-                        scanRootURL: scanRootURL,
-                        onDelete: { onRequestDelete(selectedNode) }
-                    )
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
                 } else {
                     Text("点击矩形查看详情")
                         .font(.callout)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 40)
+                        .transition(.opacity)
                 }
             }
             .padding(.horizontal)
             .padding(.top, 8)
+            .id(selectedNode?.id)
             .shadow(color: selectedNode != nil ? ShadowSpec.card.color : Color.clear,
                     radius: selectedNode != nil ? ShadowSpec.card.radius : 0,
                     x: ShadowSpec.card.x, y: ShadowSpec.card.y)
@@ -722,9 +746,10 @@ struct BreadcrumbView: View {
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let crumbs = path
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                ForEach(Array(path.enumerated()), id: \.element.id) { index, node in
+                ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, node in
                     if index > 0 {
                         Image(systemName: "chevron.right")
                             .font(.caption2)
@@ -733,12 +758,17 @@ struct BreadcrumbView: View {
                     Button(action: { onSelect(node) }) {
                         Text(node.item.name)
                             .font(.caption)
-                            .foregroundColor(index == path.count - 1 ? .primary : .secondary)
+                            .foregroundColor(index == crumbs.count - 1 ? .primary : .secondary)
                     }
                     .buttonStyle(.plain)
+                    .transition(.asymmetric(
+                        insertion: .push(from: .leading),
+                        removal: .push(from: .trailing)
+                    ))
                 }
             }
             .padding(.horizontal)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: crumbs)
         }
     }
 }
