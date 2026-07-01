@@ -19,6 +19,39 @@ enum ShadowSpec {
     static let ring = (color: Color.accentColor.opacity(0.35), radius: 4.0, x: 0.0, y: 0.0)
 }
 
+// MARK: - 空状态视图（脉冲图标 + 材质卡）
+struct EmptyStateView: View {
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "folder.badge.questionmark")
+                .font(.system(size: 64))
+                .foregroundColor(.secondary)
+                .scaleEffect(pulse ? 1.05 : 1.0)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                        pulse = true
+                    }
+                }
+
+            VStack(spacing: 8) {
+                Text("选择一个文件夹开始扫描")
+                    .font(.title2)
+                    .foregroundColor(.primary)
+
+                Text("点击上方的\"选择文件夹\"按钮开始分析磁盘使用情况")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: 400)
+        .padding(24)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+    }
+}
+
 struct ContentView: View {
     @StateObject private var fileSystemService = FileSystemService()
     @State private var layoutCalculator = BinaryTreeMapCalculator()
@@ -144,23 +177,7 @@ struct ContentView: View {
                         && !isLayouting
                     {
                         // 空状态界面
-                        VStack(spacing: 16) {
-                            Image(systemName: "folder.badge.questionmark")
-                                .font(.system(size: 64))
-                                .foregroundColor(.secondary)
-
-                            VStack(spacing: 8) {
-                                Text("选择一个文件夹开始扫描")
-                                    .font(.title2)
-                                    .foregroundColor(.primary)
-
-                                Text("点击上方的\"选择文件夹\"按钮开始分析磁盘使用情况")
-                                    .font(.body)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                        }
-                        .frame(maxWidth: 400)
+                        EmptyStateView()
                     } else if !rectangles.isEmpty && !isResizing {
                         // TreeMap可视化 - 使用Canvas避免层级问题
                         TreeMapCanvasView(
@@ -218,6 +235,7 @@ struct ContentView: View {
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
                                         .frame(maxWidth: 500)
+                                        .animation(.easeInOut(duration: 0.15), value: fileSystemService.currentPath)
                                 }
                             }
 
@@ -244,6 +262,7 @@ struct ContentView: View {
                             Text("计算布局中...")
                                 .font(.title3)
                                 .foregroundColor(.secondary)
+                                .transition(.opacity)
                         }
                     }
                     }  // close ZStack
@@ -391,7 +410,9 @@ struct ContentView: View {
         layoutTask?.cancel()
 
         // 显示布局计算状态
-        isLayouting = true
+        withAnimation(.easeOut(duration: 0.2)) {
+            isLayouting = true
+        }
 
         // 异步计算布局
         layoutTask = Task { @MainActor in
