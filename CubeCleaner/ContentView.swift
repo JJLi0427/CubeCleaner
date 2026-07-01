@@ -629,11 +629,25 @@ struct TreeMapCanvasView: View {
             with: .color(rectangle.color.opacity(opacity))
         )
 
-        // 绘制边框
+        // 绘制边框 - 分层：当前视野顶层子(不同子文件夹/独立文件边界)粗深，
+        // 文件夹内部块细。顶层子 = node.parent 是 currentRoot（或扫描根）。
+        let parent = rectangle.node.parent
+        let isTopLevelChild = parent?.id == currentRoot?.id
+        let lineWidth: CGFloat
+        let strokeOpacity: Double
+        if isTopLevelChild {
+            // 当前目录下不同文件夹/文件的分割线
+            lineWidth = rectangle.isImportant ? 2.5 : 2.0
+            strokeOpacity = 0.55
+        } else {
+            // 文件夹内部块边界
+            lineWidth = rectangle.isImportant ? 1.2 : 0.8
+            strokeOpacity = 0.25
+        }
         context.stroke(
             Path(rect),
-            with: .color(rectangle.isImportant ? .primary.opacity(0.4) : .primary.opacity(0.2)),
-            lineWidth: rectangle.isImportant ? 1.5 : 0.5
+            with: .color(.primary.opacity(strokeOpacity)),
+            lineWidth: lineWidth
         )
 
         // 绘制文本 - 如果矩形足够大
