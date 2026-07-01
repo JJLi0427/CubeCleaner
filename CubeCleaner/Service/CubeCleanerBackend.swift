@@ -738,21 +738,31 @@ class BinaryTreeMapCalculator: ObservableObject {
     // 直接优化长宽比，消除细长小条。
 
     /// 对 items 在 rect 内做 squarified 布局，递归子项。
+    /// 字节数按比例缩放到 rect 像素面积后再算长宽比，避免单位不匹配。
     private func squarify(_ items: [TreeNode], in rect: CGRect, depth: Int) -> [TreeMapRectangle] {
-        // 过滤 size>0 并按大小降序
         let sorted = items.filter { $0.totalSize > 0 }.sorted { $0.totalSize > $1.totalSize }
         guard !sorted.isEmpty else { return [] }
         if sorted.count == 1 {
             return binaryTreeMap(node: sorted[0], rect: rect, depth: depth)
         }
 
+        let totalSize = sorted.reduce(Double(0)) { $0 + Double($1.totalSize) }
+        guard totalSize > 0 else { return [] }
+        let totalArea = Double(rect.width * rect.height)
+        let scale = (totalArea > 0) ? (totalArea / totalSize) : 0
+
+        // 节点 + 缩放后面积（像素²），后续长宽比/带宽全用面积算
+        let scaled: [(node: TreeNode, area: Double)] = sorted.map {
+            ($0, Double($0.totalSize) * scale)
+        }
+
         var result: [TreeMapRectangle] = []
         var remaining = rect
-        var row: [TreeNode] = []
+        var row: [(node: TreeNode, area: Double)] = []
         var i = 0
 
-        while i < sorted.count {
-            let next = sorted[i]
+        while i < scaled.count {
+            let next = scaled[i]
             let tryRow = row + [next]
             let worstWith = worstAspectRatio(tryRow, in: remaining)
             let worstWithout = worstAspectRatio(row, in: remaining)
@@ -780,19 +790,20 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /// 计算一行在 rect 内的最差长宽比（越大越差，1.0 为正方形）。
-    private func worstAspectRatio(_ row: [TreeNode], in rect: CGRect) -> Double {
+    /// row 用缩放后面积（像素²），rect 用像素。
+    private func worstAspectRatio(_ row: [(node: TreeNode, area: Double)], in rect: CGRect) -> Double {
         guard !row.isEmpty else { return .infinity }
         let s = Double(Swift.min(rect.width, rect.height))
         guard s > 0 else { return .infinity }
-        let rowArea = row.reduce(Double(0)) { $0 + Double($1.totalSize) }
+        let rowArea = row.reduce(Double(0)) { $0 + $1.area }
         guard rowArea > 0 else { return .infinity }
-        let w = rowArea / s  // 行的带宽厚度
+        let w = rowArea / s  // 行的带宽厚度（像素）
         guard w > 0 else { return .infinity }
 
-        // 每项 h_i = itemArea / w，长宽比 max(w/h_i, h_i/w)
+        // 每项 h_i = itemArea / w（像素），长宽比 max(w/h_i, h_i/w)
         var worst = 0.0
         for item in row {
-            let h = Double(item.totalSize) / w
+            let h = item.area / w
             let r = (h == 0) ? .infinity : Swift.max(w / h, h / w)
             worst = Swift.max(worst, r)
         }
@@ -800,22 +811,21 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /// 沿短边方向布一行，返回（已布局矩形, 剩余矩形）。
-    private func layoutRow(_ row: [TreeNode], in rect: CGRect, depth: Int)
+    /// row 用缩放后面积（像素²）。
+    private func layoutRow(_ row: [(node: TreeNode, area: Double)], in rect: CGRect, depth: Int)
         -> ([TreeMapRectangle], CGRect)
     {
-        let rowArea = row.reduce(Double(0)) { $0 + Double($1.totalSize) }
-        let totalArea = Double(rect.width * rect.height)
+        let rowArea = row.reduce(Double(0)) { $0 + $1.area }
 
         let isWide = rect.width >= rect.height
         let s = Double(Swift.min(rect.width, rect.height))  // 行沿此边布
-        let w = (s > 0) ? (rowArea / s) : 0  // 带宽厚度
+        let w = (s > 0) ? (rowArea / s) : 0  // 带宽厚度（像素）
 
         var result: [TreeMapRectangle] = []
-        var cursor: Double = 0  // 行内累计长度
+        var cursor: Double = 0  // 行内累计长度（像素）
 
         for item in row {
-            let itemRatio = (rowArea > 0) ? (Double(item.totalSize) / rowArea) : 0
-            let length = itemRatio * s  // 该项沿短边方向占的长度
+            let length = (rowArea > 0) ? (item.area / rowArea) * s : 0  // 该项沿短边方向占的长度（像素）
             let subRect: CGRect
             if isWide {
                 // 带在左侧（宽 w，满高），项沿高度方向排
@@ -835,7 +845,7 @@ class BinaryTreeMapCalculator: ObservableObject {
                 )
             }
             cursor += length
-            result.append(contentsOf: binaryTreeMap(node: item, rect: subRect, depth: depth))
+            result.append(contentsOf: binaryTreeMap(node: item.node, rect: subRect, depth: depth))
         }
 
         // 剩余矩形：去掉带宽 w 的一侧
@@ -857,9 +867,6 @@ class BinaryTreeMapCalculator: ObservableObject {
                 height: rect.height - CGFloat(w)
             )
         }
-
-        // 消除未用警告
-        _ = totalArea
         return (result, remaining)
     }
 
