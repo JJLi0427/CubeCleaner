@@ -166,6 +166,7 @@ struct ContentView: View {
                         TreeMapCanvasView(
                             rectangles: rectangles,
                             highlightedFileType: highlightedFileType,
+                            selectedNode: selectedNode,
                             onTap: { rectangle in
                                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                     selectedNode = rectangle.node
@@ -315,7 +316,9 @@ struct ContentView: View {
                         deleteURL: node.item.path,
                         scanRootURL: scanRootURL
                     )
-                    selectedNode = nil
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        selectedNode = nil
+                    }
                 }
             }
             Button("取消", role: .cancel) {}
@@ -429,6 +432,7 @@ struct ContentView: View {
 struct TreeMapCanvasView: View {
     let rectangles: [TreeMapRectangle]
     let highlightedFileType: FileType?
+    let selectedNode: TreeNode?
     let onTap: (TreeMapRectangle) -> Void
     let onLongPress: (TreeMapRectangle) -> Void
     let onDoubleTap: (TreeMapRectangle) -> Void
@@ -436,10 +440,42 @@ struct TreeMapCanvasView: View {
     @State private var hoveredRectangle: TreeMapRectangle?
 
     var body: some View {
-        Canvas { context, size in
-            // 绘制所有矩形 - 一次性完成，没有层级问题
-            for rectangle in rectangles {
-                drawRectangle(context: context, rectangle: rectangle)
+        ZStack {
+            Canvas { context, size in
+                // 绘制所有矩形 - 一次性完成，没有层级问题
+                for rectangle in rectangles {
+                    drawRectangle(context: context, rectangle: rectangle)
+                }
+            }
+
+            // 悬停发光浮层（Canvas 命令式绘制无法直接动画透明度，用 SwiftUI 浮层）
+            if let hov = hoveredRectangle {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: hov.rect.width, height: hov.rect.height)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.card)
+                            .stroke(Color.white.opacity(0.6), lineWidth: 1.5)
+                    )
+                    .position(x: hov.rect.midX, y: hov.rect.midY)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+
+            // 选中描边浮层
+            if let sel = selectedNode,
+               let rect = rectangles.first(where: { $0.node.id == sel.id })?.rect {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: rect.width, height: rect.height)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.card)
+                            .stroke(Color.accentColor, lineWidth: 2)
+                            .shadow(color: ShadowSpec.ring.color, radius: ShadowSpec.ring.radius)
+                    )
+                    .position(x: rect.midX, y: rect.midY)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
             }
         }
         .gesture(
@@ -479,9 +515,13 @@ struct TreeMapCanvasView: View {
             // 复活悬停高亮：根据鼠标位置实时更新 hoveredRectangle
             switch phase {
             case .active(let location):
-                hoveredRectangle = findRectangleAt(location)
+                withAnimation(.easeOut(duration: 0.15)) {
+                    hoveredRectangle = findRectangleAt(location)
+                }
             case .ended:
-                hoveredRectangle = nil
+                withAnimation(.easeOut(duration: 0.15)) {
+                    hoveredRectangle = nil
+                }
             }
         }
     }
