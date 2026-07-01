@@ -386,7 +386,7 @@ struct ContentView: View {
             guard !Task.isCancelled else { return }
 
             // 在主线程更新UI
-            withAnimation(.easeOut(duration: 0.25)) {
+            withAnimation(.easeOut(duration: 0.3)) {
                 rectangles = newRectangles
                 isLayouting = false
                 typeBreakdown = ColorSchemeManager.shared.typeBreakdown(for: rootNode)
@@ -754,17 +754,20 @@ struct StatsBarView: View {
         HStack(spacing: 24) {
             MetricBlock(
                 icon: "externaldrive.fill",
-                value: ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file),
+                value: Double(totalSize),
+                formatter: { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) },
                 label: "总大小"
             )
             MetricBlock(
                 icon: "doc.fill",
-                value: "\(fileCount)",
+                value: Double(fileCount),
+                formatter: { "\(Int($0))" },
                 label: "文件"
             )
             MetricBlock(
                 icon: "folder.fill",
-                value: "\(folderCount)",
+                value: Double(folderCount),
+                formatter: { "\(Int($0))" },
                 label: "文件夹"
             )
             Spacer()
@@ -777,7 +780,8 @@ struct StatsBarView: View {
 
 struct MetricBlock: View {
     let icon: String
-    let value: String
+    let value: Double
+    let formatter: (Double) -> String
     let label: String
 
     var body: some View {
@@ -786,11 +790,13 @@ struct MetricBlock: View {
                 .font(.title3)
                 .foregroundColor(.accentColor)
             VStack(alignment: .leading, spacing: 0) {
-                Text(value)
+                Text(formatter(value))
                     .font(.title2)
                     .fontWeight(.semibold)
                     .monospacedDigit()
                     .foregroundColor(.primary)
+                    .contentTransition(.numericText(value: value))
+                    .animation(.easeOut(duration: 0.3), value: value)
                 Text(label)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -804,6 +810,11 @@ struct TypeRatioBarView: View {
     let entries: [ColorSchemeManager.TypeBreakdownEntry]
     let isScanning: Bool
 
+    @State private var animatedEntries: [ColorSchemeManager.TypeBreakdownEntry] = []
+
+    /// 用大小数组作为 Equatable 变化键（TypeBreakdownEntry 未声明 Equatable）
+    private var sizesKey: [Int64] { entries.map { $0.size } }
+
     var body: some View {
         if isScanning {
             ProgressView()
@@ -814,16 +825,23 @@ struct TypeRatioBarView: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(.quaternary)
                     HStack(spacing: 0) {
-                        ForEach(entries.filter { $0.size > 0 }) { entry in
+                        ForEach(animatedEntries.filter { $0.size > 0 }) { entry in
                             entry.color
                                 .frame(width: geo.size.width * entry.ratio)
                         }
                     }
                     .clipShape(Capsule())
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: sizesKey)
                 }
             }
             .frame(height: 10)
             .help(tooltipText)
+            .onAppear { animatedEntries = entries }
+            .onChange(of: sizesKey) { _, _ in
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    animatedEntries = entries
+                }
+            }
         }
     }
 
