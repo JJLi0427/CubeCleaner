@@ -7,6 +7,18 @@
 
 import SwiftUI
 
+// MARK: - 设计系统常量
+enum Radius {
+    static let swatch: CGFloat = 3
+    static let row: CGFloat = 6
+    static let card: CGFloat = 10
+}
+
+enum ShadowSpec {
+    static let card = (color: Color.black.opacity(0.06), radius: 6.0, x: 0.0, y: 2.0)
+    static let ring = (color: Color.accentColor.opacity(0.35), radius: 4.0, x: 0.0, y: 0.0)
+}
+
 struct ContentView: View {
     @StateObject private var fileSystemService = FileSystemService()
     @State private var layoutCalculator = BinaryTreeMapCalculator()
@@ -73,7 +85,7 @@ struct ContentView: View {
                 .help(showLegend ? "隐藏类型图例" : "显示类型图例")
             }
             .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            .background(.ultraThinMaterial)
 
             Divider()
 
@@ -88,7 +100,7 @@ struct ContentView: View {
                 TypeRatioBarView(entries: typeBreakdown, isScanning: fileSystemService.isScanning)
                     .padding(.horizontal)
                     .padding(.bottom, 8)
-                    .background(Color(.controlBackgroundColor))
+                    .background(.ultraThinMaterial)
                 Divider()
             }
 
@@ -275,7 +287,7 @@ struct ContentView: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 6)
-            .background(Color(.controlBackgroundColor))
+            .background(.ultraThinMaterial)
         }
         .confirmationDialog(
             "移到废纸篓",
@@ -602,6 +614,9 @@ struct DetailsSidebarView: View {
             }
             .padding(.horizontal)
             .padding(.top, 8)
+            .shadow(color: selectedNode != nil ? ShadowSpec.card.color : Color.clear,
+                    radius: selectedNode != nil ? ShadowSpec.card.radius : 0,
+                    x: ShadowSpec.card.x, y: ShadowSpec.card.y)
         }
     }
 }
@@ -756,7 +771,7 @@ struct StatsBarView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Color(.controlBackgroundColor))
+        .background(.ultraThinMaterial)
     }
 }
 
@@ -932,12 +947,12 @@ struct LegendRow: View {
     var body: some View {
         let pct = entry.total > 0 ? Int(Double(entry.size) / Double(entry.total) * 100) : 0
         return HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: Radius.swatch)
                 .fill(entry.color)
                 .frame(width: 12, height: 12)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(isHighlighted ? Color.primary : Color.clear, lineWidth: 2)
+                    RoundedRectangle(cornerRadius: Radius.swatch)
+                        .stroke(isHighlighted ? Color.accentColor : Color.clear, lineWidth: 2)
                 )
             Text(entry.type.displayName)
                 .font(.caption)
@@ -956,7 +971,8 @@ struct LegendRow: View {
         .padding(.vertical, 2)
         .padding(.horizontal, 4)
         .background(isHighlighted ? Color.accentColor.opacity(0.15) : Color.clear)
-        .cornerRadius(4)
+        .cornerRadius(Radius.row)
+        .shadow(color: isHighlighted ? Color.black.opacity(0.08) : Color.clear, radius: 3, x: 0, y: 1)
     }
 }
 
