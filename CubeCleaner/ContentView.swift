@@ -184,6 +184,7 @@ struct ContentView: View {
                             rectangles: rectangles,
                             highlightedFileType: highlightedFileType,
                             selectedNode: selectedNode,
+                            currentRoot: currentRoot ?? fileSystemService.rootNode,
                             onTap: { rectangle in
                                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                     selectedNode = rectangle.node
@@ -206,6 +207,9 @@ struct ContentView: View {
                                         await updateLayoutOptimized(size: geometry.size)
                                     }
                                 }
+                            },
+                            onHover: { rect in
+                                hoveredNode = rect?.node
                             }
                         )
                         .clipped()
@@ -271,6 +275,7 @@ struct ContentView: View {
                     if showLegend {
                         SidebarDualView(
                             selectedNode: $selectedNode,
+                            hoveredNode: hoveredNode,
                             typeBreakdown: typeBreakdown,
                             highlightedFileType: highlightedFileType,
                             onToggleHighlight: { type in
@@ -454,9 +459,11 @@ struct TreeMapCanvasView: View {
     let rectangles: [TreeMapRectangle]
     let highlightedFileType: FileType?
     let selectedNode: TreeNode?
+    let currentRoot: TreeNode?
     let onTap: (TreeMapRectangle) -> Void
     let onLongPress: (TreeMapRectangle) -> Void
     let onDoubleTap: (TreeMapRectangle) -> Void
+    let onHover: (TreeMapRectangle?) -> Void
 
     @State private var hoveredRectangle: TreeMapRectangle?
     // 高亮降透动画：dimProgress 0→1 插值，由 TimelineView 驱动
@@ -543,12 +550,20 @@ struct TreeMapCanvasView: View {
             // 复活悬停高亮：根据鼠标位置实时更新 hoveredRectangle
             switch phase {
             case .active(let location):
-                withAnimation(.easeOut(duration: 0.15)) {
-                    hoveredRectangle = findRectangleAt(location)
+                let newHover = findRectangleAt(location)
+                // 去重：仅当悬停目标真变时才更新+回调，避免高频抖动
+                if hoveredRectangle?.id != newHover?.id {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        hoveredRectangle = newHover
+                    }
+                    onHover(newHover)
                 }
             case .ended:
-                withAnimation(.easeOut(duration: 0.15)) {
-                    hoveredRectangle = nil
+                if hoveredRectangle != nil {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        hoveredRectangle = nil
+                    }
+                    onHover(nil)
                 }
             }
         }
@@ -680,40 +695,44 @@ struct TreeMapCanvasView: View {
 // MARK: - 详情侧栏视图（原中间浮层，改为侧栏页）
 struct DetailsSidebarView: View {
     @Binding var selectedNode: TreeNode?
+    let hoveredNode: TreeNode?
     let fileSystemService: FileSystemService
     let scanRootURL: URL?
     let onRequestDelete: (TreeNode) -> Void
 
+    /// 显示优先级：悬停预览 > 点击选中。移开回落到选中（无则空态）。
+    private var displayNode: TreeNode? { hoveredNode ?? selectedNode }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                if let selectedNode = selectedNode {
+                if let node = displayNode {
                     Group {
-                        Text(selectedNode.item.name)
+                        Text(node.item.name)
                             .font(.title3)
                             .fontWeight(.medium)
 
                         Text(
-                            "大小: \(ByteCountFormatter.string(fromByteCount: selectedNode.totalSize, countStyle: .file))"
+                            "大小: \(ByteCountFormatter.string(fromByteCount: node.totalSize, countStyle: .file))"
                         )
                         .font(.body)
 
-                        Text("类型: \(selectedNode.item.isDirectory ? "文件夹" : "文件")")
+                        Text("类型: \(node.item.isDirectory ? "文件夹" : "文件")")
                             .font(.body)
 
                         Text("路径:")
                             .font(.caption)
                             .foregroundColor(.secondary)
 
-                        Text(selectedNode.item.path.path)
+                        Text(node.item.path.path)
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                        if selectedNode.item.isDirectory && !selectedNode.children.isEmpty {
+                        if node.item.isDirectory && !node.children.isEmpty {
                             ChildrenListView(
-                                selectedNode: selectedNode,
+                                selectedNode: node,
                                 onSelectChild: { child in
                                     withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                         self.selectedNode = child
@@ -722,15 +741,15 @@ struct DetailsSidebarView: View {
                         }
 
                         ActionsView(
-                            selectedNode: selectedNode,
+                            selectedNode: node,
                             fileSystemService: fileSystemService,
                             scanRootURL: scanRootURL,
-                            onDelete: { onRequestDelete(selectedNode) }
+                            onDelete: { onRequestDelete(node) }
                         )
                     }
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 } else {
-                    Text("点击矩形查看详情")
+                    Text("悬停或点击矩形查看详情")
                         .font(.callout)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -740,9 +759,9 @@ struct DetailsSidebarView: View {
             }
             .padding(.horizontal)
             .padding(.top, 8)
-            .id(selectedNode?.id)
-            .shadow(color: selectedNode != nil ? ShadowSpec.card.color : Color.clear,
-                    radius: selectedNode != nil ? ShadowSpec.card.radius : 0,
+            .id(displayNode?.id)
+            .shadow(color: displayNode != nil ? ShadowSpec.card.color : Color.clear,
+                    radius: displayNode != nil ? ShadowSpec.card.radius : 0,
                     x: ShadowSpec.card.x, y: ShadowSpec.card.y)
         }
     }
@@ -1026,6 +1045,7 @@ struct NavigationBarView: View {
 // MARK: - 侧栏上下堆叠两区（图例上、详情下，不分页）
 struct SidebarDualView: View {
     let selectedNode: Binding<TreeNode?>
+    let hoveredNode: TreeNode?
     let typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry]
     let highlightedFileType: FileType?
     let onToggleHighlight: (FileType) -> Void
@@ -1046,6 +1066,7 @@ struct SidebarDualView: View {
             // 下半：详情区（按内容，可滚动）
             DetailsSidebarView(
                 selectedNode: selectedNode,
+                hoveredNode: hoveredNode,
                 fileSystemService: fileSystemService,
                 scanRootURL: scanRootURL,
                 onRequestDelete: onRequestDelete
