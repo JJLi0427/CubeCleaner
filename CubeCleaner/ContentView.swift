@@ -438,13 +438,20 @@ struct TreeMapCanvasView: View {
     let onDoubleTap: (TreeMapRectangle) -> Void
 
     @State private var hoveredRectangle: TreeMapRectangle?
+    // 高亮降透动画：dimProgress 0→1 插值，由 TimelineView 驱动
+    @State private var dimAnimStart: Date?
+    @State private var dimFrom: Double = 0
+    @State private var dimTo: Double = 0
 
     var body: some View {
         ZStack {
-            Canvas { context, size in
-                // 绘制所有矩形 - 一次性完成，没有层级问题
-                for rectangle in rectangles {
-                    drawRectangle(context: context, rectangle: rectangle)
+            TimelineView(.animation) { timeline in
+                let progress = computeDimProgress(now: timeline.date)
+                Canvas { context, size in
+                    // 绘制所有矩形 - 一次性完成，没有层级问题
+                    for rectangle in rectangles {
+                        drawRectangle(context: context, rectangle: rectangle, dimProgress: progress)
+                    }
                 }
             }
 
@@ -524,6 +531,40 @@ struct TreeMapCanvasView: View {
                 }
             }
         }
+        .onChange(of: highlightedFileType) { _, newType in
+            dimFrom = currentDimValue
+            dimTo = (newType == nil) ? 0.0 : 1.0
+            dimAnimStart = Date()
+        }
+        .onAppear {
+            if highlightedFileType != nil {
+                dimFrom = 0
+                dimTo = 1
+                dimAnimStart = Date()
+            }
+        }
+    }
+
+    /// 当前降透进度（0=无降透，1=完全降透）。无动画进行时返回 dimTo。
+    private var currentDimValue: Double {
+        guard let start = dimAnimStart else { return dimTo }
+        let elapsed = Date().timeIntervalSince(start)
+        let duration = 0.25
+        if elapsed >= duration { return dimTo }
+        let t = elapsed / duration
+        let eased = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+        return dimFrom + (dimTo - dimFrom) * eased
+    }
+
+    /// TimelineView 每帧调用，计算当前降透进度
+    private func computeDimProgress(now: Date) -> Double {
+        guard let start = dimAnimStart else { return dimTo }
+        let elapsed = now.timeIntervalSince(start)
+        let duration = 0.25
+        if elapsed >= duration { return dimTo }
+        let t = elapsed / duration
+        let eased = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+        return dimFrom + (dimTo - dimFrom) * eased
     }
 
     /// 当前矩形是否属于高亮类型（文件夹在存在高亮时视为不高亮）
@@ -537,15 +578,16 @@ struct TreeMapCanvasView: View {
     /**
      * 绘制单个矩形 - 直接Canvas绘制，无视图层级
      */
-    private func drawRectangle(context: GraphicsContext, rectangle: TreeMapRectangle) {
+    private func drawRectangle(context: GraphicsContext, rectangle: TreeMapRectangle, dimProgress: Double) {
         let rect = rectangle.rect
         let isHovered = hoveredRectangle?.id == rectangle.id
 
         // 绘制背景 - 颜色深度由 depthColor 承载(亮度通道)，此处透明度用常量；
-        // 高亮类型保持原色，其它降透
+        // 高亮类型保持原色，其它按 dimProgress 降透（0=不降，1=降到 0.2）
         let dimmed = highlightedFileType != nil && !isHighlighted(rectangle)
         let baseOpacity: Double = isHovered ? 0.95 : 0.85
-        let opacity = dimmed ? baseOpacity * 0.2 : baseOpacity
+        let dimFactor = dimmed ? (1.0 - 0.8 * dimProgress) : 1.0
+        let opacity = baseOpacity * dimFactor
         context.fill(
             Path(rect),
             with: .color(rectangle.color.opacity(opacity))
