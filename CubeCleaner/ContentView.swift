@@ -480,6 +480,17 @@ struct TreeMapCanvasView: View {
                     for rectangle in rectangles {
                         drawRectangle(context: context, rectangle: rectangle, dimProgress: progress)
                     }
+                    // 顶层子(当前目录下的目录/独立文件)包络外框：把属于同一顶层子的
+                    // 所有叶子块区域圈起来，目录用青色粗框、独立文件用主色框，一眼分组。
+                    for group in groupBoundingBoxes() {
+                        let framePath = Path(roundedRect: group.box.insetBy(dx: 1, dy: 1),
+                                             cornerRadius: Radius.card)
+                        context.stroke(
+                            framePath,
+                            with: .color(group.color),
+                            lineWidth: 2.5
+                        )
+                    }
                 }
             }
 
@@ -629,25 +640,11 @@ struct TreeMapCanvasView: View {
             with: .color(rectangle.color.opacity(opacity))
         )
 
-        // 绘制边框 - 分层：当前视野顶层子(不同子文件夹/独立文件边界)粗深，
-        // 文件夹内部块细。顶层子 = node.parent 是 currentRoot（或扫描根）。
-        let parent = rectangle.node.parent
-        let isTopLevelChild = parent?.id == currentRoot?.id
-        let lineWidth: CGFloat
-        let strokeOpacity: Double
-        if isTopLevelChild {
-            // 当前目录下不同文件夹/文件的分割线
-            lineWidth = rectangle.isImportant ? 2.5 : 2.0
-            strokeOpacity = 0.55
-        } else {
-            // 文件夹内部块边界
-            lineWidth = rectangle.isImportant ? 1.2 : 0.8
-            strokeOpacity = 0.25
-        }
+        // 绘制边框 - 内部块统一细线；顶层子分组用包络外框(见 groupBoundingBoxes)表达。
         context.stroke(
             Path(rect),
-            with: .color(.primary.opacity(strokeOpacity)),
-            lineWidth: lineWidth
+            with: .color(.primary.opacity(0.18)),
+            lineWidth: 0.5
         )
 
         // 绘制文本 - 如果矩形足够大
@@ -703,6 +700,49 @@ struct TreeMapCanvasView: View {
             }
         }
         return nil
+    }
+
+    /// 顶层子分组包络框：每个"当前视野直接子项"(currentRoot 的直接子)把它名下所有
+    /// 叶子块的区域算 union 包围框。目录用青色框、独立文件用主色框，一眼区分同级项。
+    private struct GroupBox {
+        let box: CGRect
+        let color: Color
+    }
+
+    private func groupBoundingBoxes() -> [GroupBox] {
+        guard let root = currentRoot else { return [] }
+
+        // 沿 parent 上溯，找到 rect.node 所属的顶层子(其 parent 恰为 currentRoot)。
+        func topLevelAncestor(of node: TreeNode) -> TreeNode? {
+            var cur: TreeNode? = node
+            while let n = cur {
+                if n.parent?.id == root.id { return n }
+                if n.id == root.id { return nil }  // 到根仍未命中
+                cur = n.parent
+            }
+            return nil
+        }
+
+        // 按顶层子 id 聚合 union box + 记住该顶层子是否目录
+        var boxes: [UUID: CGRect] = [:]
+        var isDir: [UUID: Bool] = [:]
+        for r in rectangles {
+            guard let top = topLevelAncestor(of: r.node) else { continue }
+            if let existing = boxes[top.id] {
+                boxes[top.id] = existing.union(r.rect)
+            } else {
+                boxes[top.id] = r.rect
+                isDir[top.id] = top.item.isDirectory
+            }
+        }
+
+        let dirColor = ColorSchemeManager.shared.colorForDirectory()
+        return boxes.map { id, box in
+            GroupBox(
+                box: box,
+                color: (isDir[id] == true) ? dirColor : Color.primary.opacity(0.5)
+            )
+        }
     }
 }
 
