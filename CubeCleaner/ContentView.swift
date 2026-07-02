@@ -214,7 +214,7 @@ struct ContentView: View {
                         )
                         .clipped()
                     } else if fileSystemService.isScanning {
-                        // 扫描状态
+                        // 扫描状态：总数未知，用不确定进度条 + 实时计数(诚实无假跳)
                         VStack(spacing: 16) {
                             ProgressView()
                                 .scaleEffect(1.5)
@@ -223,15 +223,25 @@ struct ContentView: View {
                                 .font(.title2)
                                 .foregroundColor(.primary)
 
-                            ProgressView(value: fileSystemService.scanProgress)
+                            // 不确定流动条：持续动画，不谎报进度
+                            ProgressView()
+                                .progressViewStyle(.linear)
                                 .frame(width: 300)
 
                             VStack(spacing: 4) {
+                                Text("已扫描 \(fileSystemService.filesScanned) 项 · \(fileSystemService.folderCount) 个文件夹")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .monospacedDigit()
+                                    .contentTransition(.numericText(value: Double(fileSystemService.filesScanned)))
+                                    .animation(.easeOut(duration: 0.2), value: fileSystemService.filesScanned)
+
                                 Text(
                                     "总大小: \(ByteCountFormatter.string(fromByteCount: fileSystemService.totalSize, countStyle: .file))"
                                 )
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .monospacedDigit()
 
                                 if !fileSystemService.currentPath.isEmpty {
                                     Text("当前: \(fileSystemService.currentPath)")

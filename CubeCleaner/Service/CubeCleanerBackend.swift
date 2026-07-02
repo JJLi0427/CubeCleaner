@@ -1015,7 +1015,6 @@ class FileSystemService: ObservableObject {
     // MARK: - Private Properties
     private let fileManager = FileManager.default
     private var scanTask: Task<Void, Never>?
-    private var estimatedTotalFiles: Int = 1000  // 用于进度估算
 
     init() {}
 
@@ -1092,10 +1091,7 @@ class FileSystemService: ObservableObject {
             let root = TreeNode(item: rootItem)
 
             if rootItem.isDirectory {
-                // 先估算文件数量
-                await estimateFileCount(at: url)
-
-                // 扫描目录
+                // 扫描目录（总数未知，UI 用不确定进度条 + 实时计数）
                 await scanRecursively(node: root, currentDepth: 0)
             }
 
@@ -1108,16 +1104,6 @@ class FileSystemService: ObservableObject {
         }
 
         isScanning = false
-    }
-
-    private func estimateFileCount(at url: URL) async {
-        do {
-            let contents = try fileManager.contentsOfDirectory(
-                at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-            estimatedTotalFiles = max(contents.count * 10, 1000)  // 简单估算
-        } catch {
-            estimatedTotalFiles = 1000
-        }
     }
 
     /**
@@ -1198,11 +1184,9 @@ class FileSystemService: ObservableObject {
             // 更新统计信息
             filesScanned += 1
             totalSize += item.size
-            currentPath = item.path.path
-
-            // 定期更新进度，减少UI更新频率
-            if filesScanned % 50 == 0 {
-                scanProgress = min(0.95, Double(filesScanned) / Double(estimatedTotalFiles))
+            // 每 20 项刷新一次当前路径，让计数与路径更连续地滚动(不确定进度条)
+            if filesScanned % 20 == 0 {
+                currentPath = item.path.path
             }
 
             // 递归扫描子目录
@@ -1246,11 +1230,8 @@ class FileSystemService: ObservableObject {
                     // 更新统计信息
                     filesScanned += 1
                     totalSize += item.size
-                    currentPath = item.path.path
-
-                    // 更新进度
-                    if filesScanned % 50 == 0 {
-                        scanProgress = min(0.95, Double(filesScanned) / Double(estimatedTotalFiles))
+                    if filesScanned % 20 == 0 {
+                        currentPath = item.path.path
                     }
 
                     // 递归扫描子目录
