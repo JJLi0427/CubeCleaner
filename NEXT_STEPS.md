@@ -20,7 +20,7 @@
 
 1. **[完成] TreeMap 聚合"其他"块 + 最小可见阈值** — 小文件归入"其他"，面积守恒。
 2. **[完成] 双击进入子目录 + 面包屑导航** — 长尾自然展开。
-3. **扫描移出主线程** — `FileSystemService` 去掉 `@MainActor`，`BulkFileScanner.scanDirectory` 在 `Task.detached` 或独立 actor 上执行，进度通过 `@Published` 回主线程。修复 PR-003。
+3. **[完成] 扫描移出主线程** — `FileSystemService` 保留 `@MainActor`（保 `@Published` 安全），但阻塞 IO 与树构建移至 `Task.detached` 后台线程（`nonisolated` 方法），进度节流（50项/100ms）回主线程，最终 `rootNode` 一次性回主线程接收。修复 PR-003（v0.3.3）。
 4. **聚合面积守恒的自动化验证** — 补单元测试断言"保留项 + 其他块面积 ≈ 父目录面积"（依赖 P1 测试基建）。
 
 ## P1 - 架构 & 可维护性
@@ -37,7 +37,7 @@
 ## P2 - 功能 & 生产化
 
 1. **删除/Trash** — entitlements 加 `com.apple.security.files.user-selected.read-write`，实现移到废纸篓 + 二次确认（FR-031）。
-2. **硬链接 inode 去重 + 符号链接防环** — 用 `getattrlist` 取 `ATTR_CMN_LINKID`/inode 去重；符号链接用访问过的 inode 集合防环（FR-006）。
+2. **[完成] 硬链接 inode 去重 + 符号链接防环 + 跨挂载点** — `(st_dev, st_ino)` 去重硬链接与 firmlink；符号链接不跟随标叶子；跨挂载点子目录（`statfs` mntonname）不递归，避免大小虚高（FR-006）。详见 docs/Programming-Design.md §5.3。
 3. **搜索过滤** — 文件名、大小范围、文件类型、修改时间（FR-028/032-035）。
 4. **导出** — PNG 图片、CSV/JSON 数据（FR-048/049）。
 5. **分发** — 代码签名公证、DMG 打包、补 LICENSE 文件、App Store 准备。

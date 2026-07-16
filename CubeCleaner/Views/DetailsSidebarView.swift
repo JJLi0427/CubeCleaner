@@ -30,6 +30,24 @@ struct DetailsSidebarView: View {
                         Text("类型: \(node.item.isDirectory ? "文件夹" : "文件")")
                             .font(.body)
 
+                        // 扫描边界说明：跨卷/符号链接/已计入
+                        switch node.scanBoundary {
+                        case .crossVolume:
+                            Label("跨挂载点卷（未计入大小）", systemImage: "externaldrive")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        case .symlink:
+                            Label("符号链接（未跟随）", systemImage: "link")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        case .alreadyCounted:
+                            Label("硬链接 / firmlink（已在别处计入）", systemImage: "arrow.triangle.branch")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        case .normal:
+                            EmptyView()
+                        }
+
                         Text("路径:")
                             .font(.caption)
                             .foregroundColor(.secondary)

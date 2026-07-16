@@ -1,8 +1,10 @@
 # CubeCleaner - Requirements Documentation
 
-> **实现状态对照（截至 v0.2-beta）**
+> **实现状态对照（截至 v0.3.3-beta）**
 > 每条需求后附标记：✅ 完成 / ⚠️ 部分完成 / ❌ 未实现。
-> 关键差距：FR-006 硬链接(❌)、FR-031 删除(❌)、PR-003 后台扫描不阻塞UI(❌)、PR-005 内存<500MB(❌)。
+> 关键差距：FR-031 删除(❌)、PR-005 内存<500MB(❌)。
+> 已修复：FR-006 硬链接/跨卷/符号链接(✅, v0.3.3) — 扫描不再跨挂载点递归、(dev,ino) 去重硬链接与 firmlink、符号链接不跟随。
+> 已修复：PR-003 后台扫描不阻塞 UI(✅, v0.3.3) — 阻塞 IO 与树构建跑在 Task.detached 后台线程，进度节流（50项/100ms）回写主线程。
 
 ## 1. Project Overview
 
@@ -24,7 +26,7 @@ Create a macOS application that provides intuitive visual representation of disk
 - **FR-003**: Calculate file and folder sizes accurately ✅
 - **FR-004**: Handle system files and permissions appropriately ⚠️ (有权限拒绝回退，但无统一错误处理)
 - **FR-005**: Support scanning of Time Machine backups ❌
-- **FR-006**: Handle hard-linked files and folders correctly ❌ (硬链接会重复计算)
+- **FR-006**: Handle hard-linked files and folders correctly ✅ (v0.3.3：(dev,ino) 去重硬链接与 firmlink；跨挂载点子目录不递归；符号链接不跟随)
 
 #### 2.1.2 Visualization (Tree Map)
 - **FR-007**: Display files as rectangles with area proportional to file size ✅
@@ -110,7 +112,7 @@ Create a macOS application that provides intuitive visual representation of disk
 #### 2.3.1 Scanning Performance
 - **PR-001**: Scan 100GB of data within 30 seconds (SSD) ⚠️ (getattrlistbulk 批量扫描快，但未基准测试)
 - **PR-002**: Support scanning drives with millions of files ⚠️ (能扫但内存压力大)
-- **PR-003**: Background scanning without blocking UI ❌ (当前 @MainActor 同步 IO，会卡 UI)
+- **PR-003**: Background scanning without blocking UI ✅ (v0.3.3：阻塞 IO 与树构建跑在 Task.detached 后台线程，主线程仅做节流进度回写与最终接收)
 - **PR-004**: Cancellable scanning operations ✅
 - **PR-005**: Memory usage under 500MB for large datasets ❌ (整棵 TreeNode 树常驻内存)
 
