@@ -37,6 +37,10 @@ struct ContentView: View {
     @State private var resizeTimer: Timer?
     @State private var isLayouting = false
 
+    /// TreeMap 顶部为浮动的 NavigationBarView（返回+面包屑）预留的高度，
+    /// 避免最上面一排矩形的文件名被导航条挡住。导航条实际约 36pt，取 40 留余量。
+    private let navBarReservedHeight: CGFloat = 40
+
     var body: some View {
         VStack(spacing: 0) {
             // 工具栏
@@ -142,9 +146,9 @@ struct ContentView: View {
                             selectedNode: selectedNode,
                             currentRoot: currentRoot ?? fileSystemService.rootNode,
                             onTap: { rectangle in
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                    selectedNode = rectangle.node
-                                }
+                                // 单击选中：直接赋值，不加动画——选中描边瞬移到目标矩形，
+                                // 即时反馈（避免 spring 0.4s 导致光标"滑过去"的迟滞感）。
+                                selectedNode = rectangle.node
                             },
                             onLongPress: { rectangle in
                                 NSWorkspace.shared.selectFile(
@@ -287,7 +291,7 @@ struct ContentView: View {
                 } else {
                     Spacer()
                 }
-                Text("CubeCleaner v0.3.1")
+                Text("CubeCleaner v0.3.5")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -389,9 +393,15 @@ struct ContentView: View {
         layoutTask = Task { @MainActor in
             // 在后台线程计算布局
             let calculator = layoutCalculator
+            // 顶部为浮动的导航条预留高度，避免最上面一排矩形文件名被遮挡。
+            let layoutRect = CGRect(
+                x: 0,
+                y: navBarReservedHeight,
+                width: size.width,
+                height: max(0, size.height - navBarReservedHeight)
+            )
             let newRectangles = await Task.detached { [rootNode] in
-                let rect = CGRect(origin: .zero, size: size)
-                return calculator.calculateLayout(for: rootNode, in: rect)
+                return calculator.calculateLayout(for: rootNode, in: layoutRect)
             }.value
 
             // 检查任务是否被取消

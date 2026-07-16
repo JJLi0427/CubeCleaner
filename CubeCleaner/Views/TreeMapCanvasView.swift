@@ -194,6 +194,33 @@ struct TreeMapCanvasView: View {
             lineWidth: 0.5
         )
 
+        // 扫描边界角标：跨卷/符号链接/已计入 各用不同 SF Symbol 标记，一眼区分。
+        let boundary = rectangle.node.scanBoundary
+        if boundary != .normal && rect.width > 28 && rect.height > 16 {
+            let iconName: String
+            switch boundary {
+            case .crossVolume: iconName = "externaldrive"
+            case .symlink: iconName = "link"
+            case .alreadyCounted: iconName = "arrow.triangle.branch"
+            case .normal: iconName = ""
+            }
+            if !iconName.isEmpty {
+                // 用 Text 包裹 Image 以便 GraphicsContext.resolve 解析尺寸与颜色。
+                let badge = Text(Image(systemName: iconName))
+                    .font(.system(size: min(11, rect.height / 3)))
+                    .foregroundColor(.secondary)
+                let resolved = context.resolve(badge)
+                let badgeSize = resolved.measure(in: rect.size)
+                context.draw(
+                    resolved,
+                    at: CGPoint(
+                        x: rect.maxX - badgeSize.width / 2 - 4,
+                        y: rect.minY + badgeSize.height / 2 + 4
+                    )
+                )
+            }
+        }
+
         // 绘制文本 - 如果矩形足够大
         if rectangle.shouldShowLabel && !rectangle.displayName.isEmpty {
             let textRect = CGRect(

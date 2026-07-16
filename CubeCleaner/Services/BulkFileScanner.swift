@@ -10,9 +10,14 @@ struct BulkFileAttributes {
     let name: String
     let size: Int64
     let isDirectory: Bool
+    let isSymbolicLink: Bool
     let creationDate: Date
     let modificationDate: Date
     let path: String
+    /// 文件所在卷的 fsid（int32 对）。非 APFS 或解析失败时为 nil，调用方据此决定能否做卷边界判断。
+    let fsid: (Int32, Int32)?
+    /// 对象 id（APFS 上为 inode 号）。用于硬链接/firmlink 去重。不可靠或不存在时为 nil。
+    let fileID: UInt64?
 }
 
 // MARK: - 批量文件扫描器
@@ -32,6 +37,20 @@ class BulkFileScanner {
     // 缓冲区大小：64KB，优化内存使用和IO性能
     private static let bufferSize: Int = 64 * 1024
 
+    /// 请求的 common 属性位掩码。
+    /// 注意：ATTR_CMN_RETURNED_ATTRS 是 getattrlistbulk 的必需位（见 sys/attr.h ATTR_BULK_REQUIRED），
+    /// 缺它会让调用直接返回 EINVAL。它会被系统放在返回缓冲区的最前面（attribute_set_t，20 字节）。
+    /// 其余位按 attr.h 中 ATTR_CMN_* 的位序排列：NAME(0x1) < FSID(0x4) < OBJTYPE(0x8)
+    /// < CRTIME(0x200) < MODTIME(0x400) < FILEID(0x02000000)。
+    private static let commonattrMask: attrgroup_t =
+        attrgroup_t(ATTR_CMN_RETURNED_ATTRS)
+        | attrgroup_t(ATTR_CMN_NAME)
+        | attrgroup_t(ATTR_CMN_FSID)
+        | attrgroup_t(ATTR_CMN_OBJTYPE)
+        | attrgroup_t(ATTR_CMN_CRTIME)
+        | attrgroup_t(ATTR_CMN_MODTIME)
+        | attrgroup_t(ATTR_CMN_FILEID)
+
     /**
      * 使用getattrlistbulk批量扫描目录内容
      * @param directoryPath: 要扫描的目录路径
@@ -48,13 +67,8 @@ class BulkFileScanner {
         // 设置要获取的属性列表
         var attrList = attrlist()
         attrList.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
-
-        // 文件系统属性
-        attrList.commonattr = UInt32(
-            ATTR_CMN_NAME | ATTR_CMN_OBJTYPE | ATTR_CMN_CRTIME | ATTR_CMN_MODTIME)
-
-        // 文件属性
-        attrList.fileattr = UInt32(ATTR_FILE_DATALENGTH)
+        attrList.commonattr = commonattrMask
+        attrList.fileattr = attrgroup_t(ATTR_FILE_DATALENGTH)
 
         var fileAttributes: [BulkFileAttributes] = []
         var buffer = [UInt8](repeating: 0, count: bufferSize)  // 使用预定义的缓冲区大小
@@ -107,17 +121,18 @@ class BulkFileScanner {
         for _ in 0..<count {
             guard offset < buffer.count else { break }
 
-            // 读取当前条目的长度
+            // 读取当前条目的长度（loadUnaligned，避免对齐约束）
             let entryLength = buffer.withUnsafeBytes { bytes in
-                bytes.load(fromByteOffset: offset, as: UInt32.self)
+                bytes.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
             }
 
-            guard offset + Int(entryLength) <= buffer.count else { break }
+            guard entryLength > 0, offset + Int(entryLength) <= buffer.count else { break }
 
-            let entryData = Array(buffer[offset..<offset + Int(entryLength)])
+            let entryEnd = offset + Int(entryLength)
 
             do {
-                let attributes = try parseFileAttributes(from: entryData, basePath: basePath)
+                let attributes = try parseFileAttributes(
+                    buffer: buffer, entryStart: offset, entryEnd: entryEnd, basePath: basePath)
                 fileAttributes.append(attributes)
             } catch {
                 // 跳过解析失败的条目，继续处理下一个
@@ -131,98 +146,120 @@ class BulkFileScanner {
     }
 
     /**
-     * 从单个文件的属性数据中解析文件信息
-     * @param data: 文件属性数据
-     * @param basePath: 基础路径
-     * @returns: 解析后的文件属性
+     * 从单个条目解析文件信息
+     *
+     * getattrlistbulk 的每条目布局（按请求位序，系统按 attr.h 的 ATTR_CMN_* 位序返回）：
+     *   [UInt32 length]
+     *   [attribute_set_t returnedAttrs]   // 20 字节（5 个 attrgroup_t）
+     *   [attrreference name]              // 8 字节 (attr_dataoffset + attr_length)
+     *   [fsid_t fsid]                     // 8 字节 (int32[2])，若请求了 ATTR_CMN_FSID
+     *   [UInt32 objType]                  // 4 字节
+     *   [timespec crtime]                 // tv_sec(8) + tv_nsec(8) = 16 字节
+     *   [timespec modtime]                // 16 字节
+     *   [UInt64 fileID]                   // 8 字节，若请求了 ATTR_CMN_FILEID
+     *   [Int64 dataLength]               // 8 字节，仅请求了 ATTR_FILE_DATALENGTH 时；对目录该值无意义
+     *
+     * 关键：attrreference.attr_dataoffset 是相对 **attrreference 字段自身起始** 的偏移，
+     * 即 name = buffer + nameRefPos + nameOffset。
      */
-    private static func parseFileAttributes(from data: [UInt8], basePath: String) throws
-        -> BulkFileAttributes
-    {
-        var offset = 4  // 跳过长度字段
+    private static func parseFileAttributes(
+        buffer: [UInt8], entryStart: Int, entryEnd: Int, basePath: String
+    ) throws -> BulkFileAttributes {
+        // 用 unsafe pointer 直接按偏移读取，避免逐字段拷贝出 Array 再 withUnsafeBytes。
+        // 注意：getattrlistbulk 返回的字段是按 attr.h 的自然对齐布局，但 8 字节字段
+        //（timespec.tv_sec / FILEID / DATALENGTH）落点可能不是 8 字节对齐（实测 CRTIME
+        // 落在 mod8=4 的偏移上）。统一用 loadUnaligned 读取（字节级拷贝，无对齐约束）。
+        // 闭包内不做 throw，返回 nil 由外部抛错。
+        let parsed: ParsedFields? = buffer.withUnsafeBytes { (rawBuf: UnsafeRawBufferPointer) -> ParsedFields? in
+            guard let base = rawBuf.baseAddress else { return nil }
 
-        // 读取文件名
-        guard offset + 4 <= data.count else {
-            throw FileSystemError.invalidPath
+            // 跳过 length(4) 与 attribute_set_t(20)
+            let nameRefPos = entryStart + 4 + 20
+            guard nameRefPos + 8 <= entryEnd else { return nil }
+
+            // NAME: attrreference (offset i32, length u32)
+            let nameOffset = Int(rawBuf.loadUnaligned(fromByteOffset: nameRefPos, as: Int32.self))
+            let nameLength = Int(rawBuf.loadUnaligned(fromByteOffset: nameRefPos + 4, as: UInt32.self))
+            let nameBase = nameRefPos + nameOffset
+            guard nameBase + nameLength <= entryEnd, nameLength > 0 else { return nil }
+            let namePtr = base.advanced(by: nameBase).assumingMemoryBound(to: CChar.self)
+            let fileName = String(cString: namePtr)
+
+            // FSID: fsid_t { int32[2] }
+            var p = nameRefPos + 8
+            guard p + 8 <= entryEnd else { return nil }
+            let fs0 = rawBuf.loadUnaligned(fromByteOffset: p, as: Int32.self)
+            let fs1 = rawBuf.loadUnaligned(fromByteOffset: p + 4, as: Int32.self)
+            p += 8
+
+            // OBJTYPE
+            guard p + 4 <= entryEnd else { return nil }
+            let objType = rawBuf.loadUnaligned(fromByteOffset: p, as: UInt32.self)
+            p += 4
+
+            // CRTIME / MODTIME: timespec { time_t tv_sec; long tv_nsec }
+            // darwin 上 time_t 与 long 在 64 位下均为 8 字节。
+            guard p + 16 <= entryEnd else { return nil }
+            let cSec = rawBuf.loadUnaligned(fromByteOffset: p, as: Int64.self)
+            let cNsec = rawBuf.loadUnaligned(fromByteOffset: p + 8, as: Int64.self)
+            p += 16
+            guard p + 16 <= entryEnd else { return nil }
+            let mSec = rawBuf.loadUnaligned(fromByteOffset: p, as: Int64.self)
+            let mNsec = rawBuf.loadUnaligned(fromByteOffset: p + 8, as: Int64.self)
+            p += 16
+
+            // FILEID
+            guard p + 8 <= entryEnd else { return nil }
+            let fileID = rawBuf.loadUnaligned(fromByteOffset: p, as: UInt64.self)
+            p += 8
+
+            // DATALENGTH（仅对普通文件有意义；对目录/符号链接返回的字节数无业务意义，
+            // 目录大小由调用方递归累加得到，符号链接的大小不参与统计）
+            guard p + 8 <= entryEnd else { return nil }
+            let dataLength = rawBuf.loadUnaligned(fromByteOffset: p, as: Int64.self)
+
+            return ParsedFields(
+                name: fileName, fs0: fs0, fs1: fs1, objType: objType,
+                cSec: cSec, cNsec: cNsec, mSec: mSec, mNsec: mNsec,
+                fileID: fileID, dataLength: dataLength
+            )
         }
+        guard let f = parsed else { throw FileSystemError.invalidPath }
 
-        let nameInfo = data.withUnsafeBytes { bytes in
-            bytes.load(fromByteOffset: offset, as: attrreference.self)
-        }
-        offset += MemoryLayout<attrreference>.size
-
-        let nameOffset = Int(nameInfo.attr_dataoffset)
-        let nameLength = Int(nameInfo.attr_length)
-
-        guard nameOffset + nameLength <= data.count else {
-            throw FileSystemError.invalidPath
-        }
-
-        let nameData = Array(data[nameOffset..<nameOffset + nameLength])
-        let fileName = String(cString: nameData)  // C字符串以null结尾
-
-        // 读取文件类型
-        guard offset + 4 <= data.count else {
-            throw FileSystemError.invalidPath
-        }
-
-        let objType = data.withUnsafeBytes { bytes in
-            bytes.load(fromByteOffset: offset, as: UInt32.self)
-        }
-        offset += 4
-
-        let isDirectory = (objType == VDIR.rawValue)
-
-        // 读取创建时间
-        guard offset + MemoryLayout<timespec>.size <= data.count else {
-            throw FileSystemError.invalidPath
-        }
-
-        let creationTime = data.withUnsafeBytes { bytes in
-            bytes.load(fromByteOffset: offset, as: timespec.self)
-        }
-        offset += MemoryLayout<timespec>.size
-
-        // 读取修改时间
-        guard offset + MemoryLayout<timespec>.size <= data.count else {
-            throw FileSystemError.invalidPath
-        }
-
-        let modificationTime = data.withUnsafeBytes { bytes in
-            bytes.load(fromByteOffset: offset, as: timespec.self)
-        }
-        offset += MemoryLayout<timespec>.size
-
-        // 读取文件大小（仅对普通文件有效）
-        var fileSize: Int64 = 0
-        if !isDirectory {
-            guard offset + 8 <= data.count else {
-                throw FileSystemError.invalidPath
-            }
-
-            fileSize = data.withUnsafeBytes { bytes in
-                bytes.load(fromByteOffset: offset, as: Int64.self)
-            }
-        }
-
-        // 构造完整路径
-        let fullPath = (basePath as NSString).appendingPathComponent(fileName)
-
-        // 转换时间戳为Date对象
+        let isDirectory = (f.objType == UInt32(VDIR.rawValue))
+        let isSymbolicLink = (f.objType == UInt32(VLNK.rawValue))
+        let fullPath = (basePath as NSString).appendingPathComponent(f.name)
         let creationDate = Date(
-            timeIntervalSince1970: Double(creationTime.tv_sec) + Double(creationTime.tv_nsec)
-                / 1_000_000_000)
+            timeIntervalSince1970: Double(f.cSec) + Double(f.cNsec) / 1_000_000_000)
         let modificationDate = Date(
-            timeIntervalSince1970: Double(modificationTime.tv_sec) + Double(
-                modificationTime.tv_nsec) / 1_000_000_000)
+            timeIntervalSince1970: Double(f.mSec) + Double(f.mNsec) / 1_000_000_000)
+        // 文件大小：目录与符号链接都记 0（目录靠递归累加；符号链接不参与统计）
+        let size: Int64 = (!isDirectory && !isSymbolicLink) ? f.dataLength : 0
 
         return BulkFileAttributes(
-            name: fileName,
-            size: fileSize,
+            name: f.name,
+            size: size,
             isDirectory: isDirectory,
+            isSymbolicLink: isSymbolicLink,
             creationDate: creationDate,
             modificationDate: modificationDate,
-            path: fullPath
+            path: fullPath,
+            fsid: (f.fs0, f.fs1),
+            fileID: f.fileID
         )
+    }
+
+    /// 解析中间结构，仅用于把闭包内的字段读出与构造 BulkFileAttributes 解耦。
+    private struct ParsedFields {
+        let name: String
+        let fs0: Int32
+        let fs1: Int32
+        let objType: UInt32
+        let cSec: Int64
+        let cNsec: Int64
+        let mSec: Int64
+        let mNsec: Int64
+        let fileID: UInt64
+        let dataLength: Int64
     }
 }

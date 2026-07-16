@@ -22,9 +22,24 @@ class TreeNode: ObservableObject, Identifiable, Equatable {
     /// 是否为聚合的虚拟"其他"节点
     private(set) var isAggregated: Bool = false
 
+    /// 扫描边界标记：普通 / 跨挂载点 / 符号链接 / 已计入(硬链接/firmlink 去重命中)。
+    /// 除 `.normal` 外的节点都作为叶子渲染、不参与递归二分（见 BinaryTreeMapCalculator）。
+    enum ScanBoundary: String {
+        case normal
+        case crossVolume      // 子目录是另一个卷的挂载点，跨卷未计入
+        case symlink          // 符号链接，未跟随
+        case alreadyCounted   // 硬链接/firmlink 目标，已在别处计入
+    }
+    private(set) var scanBoundary: ScanBoundary = .normal
+
     /// 标记为聚合节点
     func markAsAggregated() {
         isAggregated = true
+    }
+
+    /// 标记扫描边界（跨卷/符号链接/已计入）。标记后不应再递归其子项。
+    func markScanBoundary(_ boundary: ScanBoundary) {
+        scanBoundary = boundary
     }
 
     /// 节点在树中的层级深度

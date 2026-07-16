@@ -233,12 +233,17 @@ class BinaryTreeMapCalculator: ObservableObject {
      * 6. 边界：若全部 < 阈值，不聚合，保留前 10 大，避免空图
      */
     private func getValidChildren(of parent: TreeNode) -> [TreeNode] {
-        let nonZeroChildren = parent.children.filter { $0.totalSize > 0 }
-        guard !nonZeroChildren.isEmpty else { return [] }
+        // 扫描边界叶子（跨卷/符号链接/已计入）即使 size==0 也保留，让它们在 TreeMap 上可见。
+        // 其余 size==0 的子项按原逻辑过滤。
+        let boundaryChildren = parent.children.filter { $0.scanBoundary != .normal }
+        let nonZeroChildren = parent.children.filter {
+            $0.scanBoundary == .normal && $0.totalSize > 0
+        }
+        guard !nonZeroChildren.isEmpty || !boundaryChildren.isEmpty else { return [] }
 
-        // 子节点不多，直接返回
+        // 子节点不多，直接返回（含边界叶子）
         if nonZeroChildren.count <= 5 {
-            return nonZeroChildren
+            return nonZeroChildren + boundaryChildren
         }
 
         let sortedChildren = nonZeroChildren.sorted { $0.totalSize > $1.totalSize }
@@ -259,12 +264,12 @@ class BinaryTreeMapCalculator: ObservableObject {
 
         // 边界：若全部 < 阈值（即 kept 为空），保留前 10 大，不聚合
         if kept.isEmpty {
-            return Array(sortedChildren.prefix(10))
+            return Array(sortedChildren.prefix(10)) + boundaryChildren
         }
 
-        // 没有可聚合的小文件，直接返回
+        // 没有可聚合的小文件，直接返回（含边界叶子）
         if aggregatedChildren.isEmpty {
-            return kept
+            return kept + boundaryChildren
         }
 
         // 构造虚拟"其他"节点 - 把待聚合的子项挂为它的 children，
@@ -317,7 +322,16 @@ class BinaryTreeMapCalculator: ObservableObject {
      */
     private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int, isAggregated: Bool = false) -> TreeMapRectangle {
         let color: Color
-        if node.isAggregated {
+        if node.scanBoundary == .crossVolume {
+            // 跨挂载点卷：未计入，用半透明中性灰区分
+            color = Color(.systemGray).opacity(0.35)
+        } else if node.scanBoundary == .alreadyCounted {
+            // 硬链接/firmlink 已计入：更浅的灰
+            color = Color(.systemGray).opacity(0.22)
+        } else if node.scanBoundary == .symlink {
+            // 符号链接：最浅灰
+            color = Color(.systemGray).opacity(0.18)
+        } else if node.isAggregated {
             color = Color(.systemGray).opacity(0.5)
         } else if node.item.isDirectory {
             color = colorSchemeManager.colorForDirectory().opacity(0.7)

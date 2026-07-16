@@ -116,7 +116,7 @@ v0.2 未拆分 ViewModel，状态直接在 `ContentView` 与 `FileSystemService`
 - `ContentView`：`@StateObject fileSystemService`、`@State layoutCalculator`、`@State rectangles`、`@State currentRoot`、`@State selectedNode` 等。
 - `FileSystemService`：`@MainActor ObservableObject`，`@Published` 暴露 `isScanning/scanProgress/rootNode` 等。
 
-⚠️ 已知问题：`FileSystemService` 标 `@MainActor`，但 `BulkFileScanner.scanDirectory` 是同步阻塞 IO，大目录会卡 UI（见 NEXT_STEPS P0-3）。
+⚠️ v0.3.3 已修复：`FileSystemService` 仍标 `@MainActor`（保证 `@Published` 写入与 SwiftUI 观察在主线程），但阻塞 IO 与树构建移至 `Task.detached(priority:.utility)` 后台线程（`performScanBackground` 等 `nonisolated` 方法），主线程仅做节流进度回写（50项/100ms）与最终接收 `rootNode`。扫描期间 UI 响应（resize/取消按钮可点）。
 
 ## 5. Services (实际)
 
@@ -126,16 +126,36 @@ v0.2 未拆分 ViewModel，状态直接在 `ContentView` 与 `FileSystemService`
 @MainActor
 class FileSystemService: ObservableObject {
     @Published var isScanning, scanProgress, currentPath, filesScanned, totalSize, rootNode, errorMessage
-    func scanDirectory(at url: URL)        // 启动 Task 扫描
-    func cancelScan()                       // 取消 Task
-    private func scanRecursively(node:currentDepth:) async   // 递归，深度上限 10
-    private func scanRecursivelyFallback(...) async          // FileManager 回退
+    func scanDirectory(at url: URL)                         // 主线程调，内部 Task.detached 跑后台
+    func cancelScan()                                        // 取消 Task
+    private nonisolated func performScanBackground(at:) async  // 后台入口：scope/建根/递归/排序/最终回写
+    private nonisolated func scanRecursively(...) async       // 后台递归，深度上限 10
+    private nonisolated func scanRecursivelyFallback(...) async // FileManager 回退
+    private nonisolated func flushProgress(_:) async -> ScanProgress?  // 50项/100ms 节流回写
 }
 ```
 
 ### 5.2 BulkFileScanner (static, 同步)
 
-用 `getattrlistbulk` 批量读取目录条目属性（name/objtype/crtime/modtime/datalength），64KB 缓冲区，512 条/批。解析 `attrlist`/`attrreference`/`timespec` 二进制结构。
+用 `getattrlistbulk` 批量读取目录条目属性（name/fsid/objtype/crtime/modtime/fileid/datalength），64KB 缓冲区，512 条/批。解析 `attrlist`/`attribute_set_t`/`attrreference`/`timespec`/`fsid_t` 二进制结构。
+
+**属性请求位掩码**（`commonattr`）含 `ATTR_CMN_RETURNED_ATTRS`（`getattrlistbulk` 的必需位，缺它返回 EINVAL），其余按 `ATTR_CMN_*` 位序返回。每条目布局：`[UInt32 length][attribute_set_t 20B][attrreference name 8B][fsid_t 8B][UInt32 objType][timespec crtime 16B][timespec modtime 16B][UInt64 fileID][Int64 dataLength]`。文件名取值：`name = buf + nameRefPos + nameOffset`（`attr_dataoffset` 相对 `attrreference` 字段自身起始）。
+
+`objType` 识别 `VDIR`（目录）/`VLNK`（符号链接）/`VREG`（普通文件）；目录与符号链接的 `datalength` 无业务意义，size 记 0。
+
+### 5.3 扫描边界与去重 (v0.3.3, FR-006；v0.3.4 性能优化)
+
+`FileSystemService.scanRecursively` / `processBatch` 对每个目录子项依次过三道闸门（回退路径 `scanRecursivelyFallback` 同步）：
+
+1. **符号链接**（`objType==VLNK` / `lstat` `S_ISLNK`）：不跟随，标记 `scanBoundary=.symlink`，作为叶子，size 不计入。
+2. **跨挂载点**：子目录本身是另一卷的挂载点（如 `/System/Volumes/Data`），不递归，标 `.crossVolume`，避免把整个数据卷算进来导致大小虚高。等价于 `du -x` / `find -x`。**v0.3.4 优化**：扫描开始时用 `getmntinfo` 一次取全部挂载点 `f_mntonname` 成 `Set<String>`，跨卷判断走 O(1) 集合查找，替代每目录 `statfs`（实测 /System 省 ~233ms）。回退路径无预构建集合时仍用单次 `statfs`。
+3. **硬链接/firmlink 去重**：同一对象已在别处计入时不重复递归/计大小，标 `.alreadyCounted`。**v0.3.4 优化**：目录与文件统一用 bulk 返回的 `fileID`（ATTR_CMN_FILEID，已是 inode）去重，免每目录 `lstat`（实测省 ~333ms）；`fileID==0`（非 APFS 不可靠）时跳过去重，不误杀。根节点与回退路径（FileManager 无 bulk fileID）仍用 `lstat(dev,ino)`。
+
+`Set<VisitKey>` 是扫描 Task 内局部状态，随扫描结束释放，不跨扫描泄漏。`TreeNode.scanBoundary` 驱动 `BinaryTreeMapCalculator.createLeafRectangle`（边界叶子用半透明中性灰）与 `TreeMapCanvasView.drawRectangle`（角标 SF Symbol：externaldrive/link/arrow.triangle.branch），`DetailsSidebarView` 显示对应说明。
+
+**验证基准**：扫 `/System` 旧逻辑（跨卷不拦）= 305.88 GB（带进整个 Data 卷 + 各 APFS 分区卷），新逻辑（跨卷拦）= 28.16 GB（仅只读系统卷本身），拦下 7 个挂载点子目录。去重命中数与 totalSize 在 lstat 去重 vs bulk fileID 去重两版完全一致（`deduped=21325`、`total=28.16GB`），行为等价。
+
+**性能基准**（/System，~48 万项）：v0.3.3 ~3793ms → v0.3.4 ~2620ms（省 ~31%）。剩余耗时几乎全是 `getattrlistbulk` 的 16 万次系统调用本身 + TreeNode 构建，无进一步压缩空间。
 
 ## 6. Layout Algorithm (实际：二分法 + 聚合)
 
@@ -211,15 +231,18 @@ private func getValidChildren(_ children: [TreeNode]) -> [TreeNode] {
 ## 9. Performance (实际优化点)
 
 ### 9.1 已实现
-- **批量扫描**：`getattrlistbulk` 减少系统调用，64KB 缓冲区。
-- **分批处理**：`chunked(into: 100)` 控制内存峰值，`Task.yield()` 让出主线程。
+
+- **批量扫描**：`getattrlistbulk` 减少系统调用，64KB 缓冲区，`loadUnaligned` 解析（对齐安全）。
+- **分批处理**：`chunked(into: 100)` 控制内存峰值。
+- **后台扫描（v0.3.3, P0-3）**：阻塞 IO 与树构建跑在 `Task.detached(priority:.utility)` 后台线程（`performScanBackground` 等 `nonisolated` 方法）；`@Published` 写入经 `MainActor.run` 节流回写（50项/100ms），最终 `rootNode` 一次性回主线程。扫描期间 UI 不阻塞。
 - **Canvas 渲染**：一次性绘制，无视图层级开销。
 - **resize 防抖**：拖动清空，停手 0.3s 重算。
 - **后台布局**：`Task.detached` 算布局，主线程仅赋值。
 - **聚合降量**：小文件归入"其他"，矩形数大幅减少。
+- **扫描后排序**：整树构建完后后台 `sortChildren` 降序，提升 TreeMap 布局质量。
 
 ### 9.2 待优化
-- 扫描移出主线程（P0-3）
+
 - 整棵树常驻内存 → 懒加载/分页（P1）
 - viewport culling（超大视图）
 
