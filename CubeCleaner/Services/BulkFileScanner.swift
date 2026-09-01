@@ -11,8 +11,6 @@ struct BulkFileAttributes {
     let size: Int64
     let isDirectory: Bool
     let isSymbolicLink: Bool
-    let creationDate: Date
-    let modificationDate: Date
     let path: String
     /// 文件所在卷的 fsid（int32 对）。非 APFS 或解析失败时为 nil，调用方据此决定能否做卷边界判断。
     let fsid: (Int32, Int32)?
@@ -41,14 +39,13 @@ class BulkFileScanner {
     /// 注意：ATTR_CMN_RETURNED_ATTRS 是 getattrlistbulk 的必需位（见 sys/attr.h ATTR_BULK_REQUIRED），
     /// 缺它会让调用直接返回 EINVAL。它会被系统放在返回缓冲区的最前面（attribute_set_t，20 字节）。
     /// 其余位按 attr.h 中 ATTR_CMN_* 的位序排列：NAME(0x1) < FSID(0x4) < OBJTYPE(0x8)
-    /// < CRTIME(0x200) < MODTIME(0x400) < FILEID(0x02000000)。
+    /// < FILEID(0x02000000)。
+    /// CRTIME/MODTIME 未请求：UI 不消费时间戳，省去每条目 32 字节与两次 Date 分配。
     private static let commonattrMask: attrgroup_t =
         attrgroup_t(ATTR_CMN_RETURNED_ATTRS)
         | attrgroup_t(ATTR_CMN_NAME)
         | attrgroup_t(ATTR_CMN_FSID)
         | attrgroup_t(ATTR_CMN_OBJTYPE)
-        | attrgroup_t(ATTR_CMN_CRTIME)
-        | attrgroup_t(ATTR_CMN_MODTIME)
         | attrgroup_t(ATTR_CMN_FILEID)
 
     /**
@@ -154,8 +151,6 @@ class BulkFileScanner {
      *   [attrreference name]              // 8 字节 (attr_dataoffset + attr_length)
      *   [fsid_t fsid]                     // 8 字节 (int32[2])，若请求了 ATTR_CMN_FSID
      *   [UInt32 objType]                  // 4 字节
-     *   [timespec crtime]                 // tv_sec(8) + tv_nsec(8) = 16 字节
-     *   [timespec modtime]                // 16 字节
      *   [UInt64 fileID]                   // 8 字节，若请求了 ATTR_CMN_FILEID
      *   [Int64 dataLength]               // 8 字节，仅请求了 ATTR_FILE_DATALENGTH 时；对目录该值无意义
      *
@@ -167,8 +162,8 @@ class BulkFileScanner {
     ) throws -> BulkFileAttributes {
         // 用 unsafe pointer 直接按偏移读取，避免逐字段拷贝出 Array 再 withUnsafeBytes。
         // 注意：getattrlistbulk 返回的字段是按 attr.h 的自然对齐布局，但 8 字节字段
-        //（timespec.tv_sec / FILEID / DATALENGTH）落点可能不是 8 字节对齐（实测 CRTIME
-        // 落在 mod8=4 的偏移上）。统一用 loadUnaligned 读取（字节级拷贝，无对齐约束）。
+        //（FILEID / DATALENGTH）落点可能不是 8 字节对齐。统一用 loadUnaligned 读取
+        //（字节级拷贝，无对齐约束）。
         // 闭包内不做 throw，返回 nil 由外部抛错。
         let parsed: ParsedFields? = buffer.withUnsafeBytes { (rawBuf: UnsafeRawBufferPointer) -> ParsedFields? in
             guard let base = rawBuf.baseAddress else { return nil }
@@ -197,17 +192,6 @@ class BulkFileScanner {
             let objType = rawBuf.loadUnaligned(fromByteOffset: p, as: UInt32.self)
             p += 4
 
-            // CRTIME / MODTIME: timespec { time_t tv_sec; long tv_nsec }
-            // darwin 上 time_t 与 long 在 64 位下均为 8 字节。
-            guard p + 16 <= entryEnd else { return nil }
-            let cSec = rawBuf.loadUnaligned(fromByteOffset: p, as: Int64.self)
-            let cNsec = rawBuf.loadUnaligned(fromByteOffset: p + 8, as: Int64.self)
-            p += 16
-            guard p + 16 <= entryEnd else { return nil }
-            let mSec = rawBuf.loadUnaligned(fromByteOffset: p, as: Int64.self)
-            let mNsec = rawBuf.loadUnaligned(fromByteOffset: p + 8, as: Int64.self)
-            p += 16
-
             // FILEID
             guard p + 8 <= entryEnd else { return nil }
             let fileID = rawBuf.loadUnaligned(fromByteOffset: p, as: UInt64.self)
@@ -220,7 +204,6 @@ class BulkFileScanner {
 
             return ParsedFields(
                 name: fileName, fs0: fs0, fs1: fs1, objType: objType,
-                cSec: cSec, cNsec: cNsec, mSec: mSec, mNsec: mNsec,
                 fileID: fileID, dataLength: dataLength
             )
         }
@@ -229,10 +212,6 @@ class BulkFileScanner {
         let isDirectory = (f.objType == UInt32(VDIR.rawValue))
         let isSymbolicLink = (f.objType == UInt32(VLNK.rawValue))
         let fullPath = (basePath as NSString).appendingPathComponent(f.name)
-        let creationDate = Date(
-            timeIntervalSince1970: Double(f.cSec) + Double(f.cNsec) / 1_000_000_000)
-        let modificationDate = Date(
-            timeIntervalSince1970: Double(f.mSec) + Double(f.mNsec) / 1_000_000_000)
         // 文件大小：目录与符号链接都记 0（目录靠递归累加；符号链接不参与统计）
         let size: Int64 = (!isDirectory && !isSymbolicLink) ? f.dataLength : 0
 
@@ -241,8 +220,6 @@ class BulkFileScanner {
             size: size,
             isDirectory: isDirectory,
             isSymbolicLink: isSymbolicLink,
-            creationDate: creationDate,
-            modificationDate: modificationDate,
             path: fullPath,
             fsid: (f.fs0, f.fs1),
             fileID: f.fileID
@@ -255,10 +232,6 @@ class BulkFileScanner {
         let fs0: Int32
         let fs1: Int32
         let objType: UInt32
-        let cSec: Int64
-        let cNsec: Int64
-        let mSec: Int64
-        let mNsec: Int64
         let fileID: UInt64
         let dataLength: Int64
     }

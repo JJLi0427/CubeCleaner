@@ -281,9 +281,7 @@ class BinaryTreeMapCalculator: ObservableObject {
             name: "其他 (\(aggregatedChildren.count) 项)",
             path: URL(fileURLWithPath: "/__aggregated__"),
             size: aggregatedSize,
-            isDirectory: false,
-            creationDate: Date(timeIntervalSince1970: 0),
-            modificationDate: Date(timeIntervalSince1970: 0)
+            isDirectory: false
         )
         let otherNode = TreeNode(item: otherItem, parent: parent)
         otherNode.markAsAggregated()

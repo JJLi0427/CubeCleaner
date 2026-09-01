@@ -287,9 +287,7 @@ class FileSystemService: ObservableObject {
                     name: attributes.name,
                     path: URL(fileURLWithPath: attributes.path),
                     size: 0,
-                    isDirectory: false,
-                    creationDate: attributes.creationDate,
-                    modificationDate: attributes.modificationDate
+                    isDirectory: false
                 )
                 let childNode = TreeNode(item: item, parent: parentNode)
                 childNode.markScanBoundary(.symlink)
@@ -303,9 +301,7 @@ class FileSystemService: ObservableObject {
                 name: attributes.name,
                 path: URL(fileURLWithPath: attributes.path),
                 size: attributes.size,
-                isDirectory: attributes.isDirectory,
-                creationDate: attributes.creationDate,
-                modificationDate: attributes.modificationDate
+                isDirectory: attributes.isDirectory
             )
 
             let childNode = TreeNode(item: item, parent: parentNode)
@@ -387,7 +383,6 @@ class FileSystemService: ObservableObject {
                 at: node.item.path,
                 includingPropertiesForKeys: [
                     .nameKey, .fileSizeKey, .isDirectoryKey,
-                    .creationDateKey, .contentModificationDateKey,
                 ],
                 options: [.skipsHiddenFiles]
             )
@@ -405,9 +400,7 @@ class FileSystemService: ObservableObject {
                         name: itemURL.lastPathComponent,
                         path: itemURL,
                         size: 0,
-                        isDirectory: false,
-                        creationDate: Date(),
-                        modificationDate: Date()
+                        isDirectory: false
                     )
                     let childNode = TreeNode(item: item, parent: node)
                     childNode.markScanBoundary(.symlink)
@@ -420,9 +413,7 @@ class FileSystemService: ObservableObject {
                     name: itemURL.lastPathComponent,
                     path: itemURL,
                     size: Int64(size),
-                    isDirectory: isDir,
-                    creationDate: Date(),
-                    modificationDate: Date()
+                    isDirectory: isDir
                 )
                 let childNode = TreeNode(item: item, parent: node)
                 node.addChild(childNode)
@@ -483,16 +474,13 @@ class FileSystemService: ObservableObject {
     private nonisolated func createFileSystemItem(from url: URL) throws -> FileSystemItem {
         let resourceValues = try url.resourceValues(forKeys: [
             .nameKey, .fileSizeKey, .isDirectoryKey,
-            .creationDateKey, .contentModificationDateKey,
         ])
 
         return FileSystemItem(
             name: resourceValues.name ?? url.lastPathComponent,
             path: url,
             size: Int64(resourceValues.fileSize ?? 0),
-            isDirectory: resourceValues.isDirectory ?? false,
-            creationDate: resourceValues.creationDate ?? Date(),
-            modificationDate: resourceValues.contentModificationDate ?? Date()
+            isDirectory: resourceValues.isDirectory ?? false
         )
     }
 
