@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build-and-release:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@v4
@@ -117,6 +117,6 @@ jobs:
             - Ref: ${{ github.ref_name }}
             - 配置: Release, ad-hoc 签名 (`CODE_SIGN_IDENTITY="-"`)
             - 部署目标: macOS 15.5
-            - Runner: macos-15
+            - Runner: macos-26
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
