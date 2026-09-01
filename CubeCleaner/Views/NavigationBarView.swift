@@ -17,17 +17,19 @@ struct NavigationBarView: View {
         HStack(spacing: 8) {
             Button(action: onBack) {
                 Label("返回上一级", systemImage: "chevron.backward")
+                    .font(.callout)
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
             .disabled(isAtRoot)
 
             Divider()
-                .frame(height: 16)
+                .frame(height: 24)
 
             BreadcrumbView(currentRoot: currentRoot, onSelect: onSelectBreadcrumb)
         }
         .padding(.horizontal)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .glassBackground()
     }
 }

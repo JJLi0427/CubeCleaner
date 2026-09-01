@@ -34,20 +34,20 @@ struct LegendChip: View {
 
     var body: some View {
         let pct = entry.total > 0 ? Int(Double(entry.size) / Double(entry.total) * 100) : 0
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             RoundedRectangle(cornerRadius: Radius.swatch)
                 .fill(entry.color)
-                .frame(width: 10, height: 10)
+                .frame(width: 14, height: 14)
             Text(entry.type.displayName)
-                .font(.caption)
+                .font(.callout)
                 .foregroundColor(.primary)
             Text("\(pct)%")
-                .font(.caption2)
+                .font(.callout)
                 .foregroundColor(.secondary)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .background(
             isHighlighted
                 ? Color.accentColor.opacity(0.18)

@@ -47,8 +47,8 @@ struct TreeMapCanvasView: View {
                 Group {
                     if #available(macOS 26.0, *) {
                         RoundedRectangle(cornerRadius: Radius.card)
-                            .fill(Color.white.opacity(0.08))
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Radius.card))
+                            .fill(Color.clear)
+                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: Radius.card))
                             .overlay(
                                 RoundedRectangle(cornerRadius: Radius.card)
                                     .stroke(Color.white.opacity(0.6), lineWidth: 1.5)

@@ -20,16 +20,16 @@ struct BreadcrumbView: View {
     var body: some View {
         let crumbs = path
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, node in
                     if index > 0 {
                         Image(systemName: "chevron.right")
-                            .font(.caption2)
+                            .font(.callout)
                             .foregroundColor(.secondary)
                     }
                     Button(action: { onSelect(node) }) {
                         Text(node.item.name)
-                            .font(.caption)
+                            .font(.callout)
                             .foregroundColor(index == crumbs.count - 1 ? .primary : .secondary)
                     }
                     .buttonStyle(.plain)

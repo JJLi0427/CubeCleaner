@@ -7,6 +7,7 @@ struct StatsBarView: View {
     let fileCount: Int
     let folderCount: Int
     let isScanning: Bool
+    let onChooseFolder: () -> Void
 
     var body: some View {
         HStack(spacing: 24) {
@@ -29,6 +30,16 @@ struct StatsBarView: View {
                 label: "文件夹"
             )
             Spacer()
+
+            Button {
+                onChooseFolder()
+            } label: {
+                Label("选择文件夹", systemImage: "folder.badge.plus")
+                    .font(.callout)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isScanning)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

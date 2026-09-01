@@ -41,46 +41,15 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 工具栏
-            HStack {
-                Button("选择文件夹") {
-                    showingFilePicker = true
-                }
-                .disabled(fileSystemService.isScanning)
-                .buttonStyle(.borderedProminent)
-
-                if fileSystemService.isScanning {
-                    Spacer()
-
-                    Button("取消扫描") {
-                        fileSystemService.cancelScan()
-                    }
-                    .foregroundColor(.red)
-                    .buttonStyle(.bordered)
-                }
-
-                Spacer()
-
-                if let selectedPath = selectedPath {
-                    Text("已选择: \(selectedPath.lastPathComponent)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .padding()
-            .glassBackground()
-
-            Divider()
-
-            // 统计条 + 类型比例条 + 横向类型图例（均固定宽度，不遮挡地图）
+            // 统计条（含"选择文件夹"按钮）+ 类型比例条 + 横向类型图例（均固定宽度，不遮挡地图）
+            StatsBarView(
+                totalSize: subtreeTotalSize,
+                fileCount: subtreeFileCount,
+                folderCount: subtreeFolderCount,
+                isScanning: fileSystemService.isScanning,
+                onChooseFolder: { showingFilePicker = true }
+            )
             if fileSystemService.rootNode != nil || fileSystemService.isScanning {
-                StatsBarView(
-                    totalSize: subtreeTotalSize,
-                    fileCount: subtreeFileCount,
-                    folderCount: subtreeFolderCount,
-                    isScanning: fileSystemService.isScanning
-                )
                 TypeRatioBarView(entries: typeBreakdown, isScanning: fileSystemService.isScanning)
                     .padding(.horizontal)
                     .padding(.bottom, 8)

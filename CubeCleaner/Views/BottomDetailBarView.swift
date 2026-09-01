@@ -14,9 +14,10 @@ struct BottomDetailBarView: View {
     let onRequestDelete: (TreeNode) -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             if let node {
                 Image(systemName: node.item.isDirectory ? "folder.fill" : "doc.fill")
+                    .font(.title3)
                     .foregroundColor(node.item.isDirectory ? ColorSchemeManager.shared.colorForDirectory() : .secondary)
 
                 Text(node.item.name)
@@ -30,17 +31,17 @@ struct BottomDetailBarView: View {
                     .foregroundColor(.secondary)
 
                 Text(node.item.isDirectory ? "文件夹" : "文件")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundColor(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
                     .background(Color.primary.opacity(0.06))
                     .cornerRadius(Radius.swatch)
 
                 boundaryBadge(for: node)
 
                 Text(node.item.path.path)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -55,14 +56,14 @@ struct BottomDetailBarView: View {
                     )
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .controlSize(.large)
 
                 if node.item.isDirectory {
                     Button("重新扫描") {
                         fileSystemService.scanDirectory(at: node.item.path)
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.large)
                 }
 
                 Button {
@@ -71,7 +72,7 @@ struct BottomDetailBarView: View {
                     Label("移到废纸篓", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .controlSize(.large)
                 .tint(.red)
             } else {
                 Text("悬停或点击矩形查看详情")
@@ -81,7 +82,7 @@ struct BottomDetailBarView: View {
             }
         }
         .padding(.horizontal)
-        .frame(height: 36)
+        .frame(height: 48)
         .glassBackground()
     }
 
@@ -91,15 +92,15 @@ struct BottomDetailBarView: View {
         switch node.scanBoundary {
         case .crossVolume:
             Label("跨卷", systemImage: "externaldrive")
-                .font(.caption2)
+                .font(.callout)
                 .foregroundColor(.orange)
         case .symlink:
             Label("符号链接", systemImage: "link")
-                .font(.caption2)
+                .font(.callout)
                 .foregroundColor(.secondary)
         case .alreadyCounted:
             Label("已计入", systemImage: "arrow.triangle.branch")
-                .font(.caption2)
+                .font(.callout)
                 .foregroundColor(.secondary)
         case .normal:
             EmptyView()
