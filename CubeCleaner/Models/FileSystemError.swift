@@ -2,14 +2,11 @@
 
 import Foundation
 
-// MARK: - 工具模块
-// MARK: FileSystemError - 错误类型定义
+// MARK: - 错误类型定义
 /// 文件系统操作相关的错误类型
-/// 提供本地化的错误信息
 enum FileSystemError: LocalizedError {
     case accessDenied
     case invalidPath
-    case scanCancelled
 
     var errorDescription: String? {
         switch self {
@@ -17,8 +14,6 @@ enum FileSystemError: LocalizedError {
             return "无法访问所选文件夹，请检查权限设置"
         case .invalidPath:
             return "无效的文件路径"
-        case .scanCancelled:
-            return "扫描已被取消"
         }
     }
 }

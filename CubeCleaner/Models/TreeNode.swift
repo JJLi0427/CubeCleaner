@@ -45,11 +45,6 @@ class TreeNode: Identifiable, Equatable {
         scanBoundary = boundary
     }
 
-    /// 节点在树中的层级深度
-    var level: Int {
-        (parent?.level ?? -1) + 1
-    }
-
     init(item: FileSystemItem, parent: TreeNode? = nil) {
         self.item = item
         self.parent = parent

@@ -70,13 +70,6 @@ struct TreeMapRectangle: Identifiable {
     }
 
     /**
-     * 是否显示详细信息（文件数量等）
-     */
-    var canShowDetails: Bool {
-        return rect.width > 120 && rect.height > 50
-    }
-
-    /**
      * 格式化的大小字符串
      */
     var formattedSize: String {
@@ -84,32 +77,9 @@ struct TreeMapRectangle: Identifiable {
     }
 
     /**
-     * 矩形的重要程度（用于决定显示优先级）
-     * 基于大小和层级
-     */
-    var importance: Double {
-        let sizeWeight = Double(node.totalSize)
-        let levelWeight = 1.0 / Double(level + 1)  // 层级越深权重越小
-        return sizeWeight * levelWeight
-    }
-
-    /**
      * 是否为重要节点（大文件/文件夹）
      */
     var isImportant: Bool {
         return node.totalSize > 10_000_000  // 大于10MB认为是重要的
-    }
-
-    /**
-     * 获取子文件数量描述
-     */
-    var childrenDescription: String {
-        guard node.item.isDirectory else { return "" }
-        let count = node.children.count
-        if count == 0 {
-            return "空文件夹"
-        } else {
-            return "\(count) 项"
-        }
     }
 }

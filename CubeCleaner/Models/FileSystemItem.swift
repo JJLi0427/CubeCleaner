@@ -24,16 +24,6 @@ struct FileSystemItem: Codable, Hashable {
         self.isDirectory = isDirectory
     }
 
-    /// 格式化的文件大小字符串
-    var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-    }
-
-    /// 是否为隐藏文件/文件夹
-    var isHidden: Bool {
-        name.hasPrefix(".")
-    }
-
     /// 文件扩展名（小写）
     var fileExtension: String {
         path.pathExtension.lowercased()

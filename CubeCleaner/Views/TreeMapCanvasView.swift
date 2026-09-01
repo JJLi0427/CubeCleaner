@@ -23,7 +23,7 @@ struct TreeMapCanvasView: View {
             TimelineView(.animation) { timeline in
                 let progress = computeDimProgress(now: timeline.date)
                 Canvas { context, size in
-                    // 绘制所有矩形 - 一次性完成，没有层级问题
+                    // 绘制所有矩形
                     for rectangle in rectangles {
                         drawRectangle(context: context, rectangle: rectangle, dimProgress: progress)
                     }

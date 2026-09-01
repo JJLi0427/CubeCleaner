@@ -33,10 +33,6 @@ struct BreadcrumbView: View {
                             .foregroundColor(index == crumbs.count - 1 ? .primary : .secondary)
                     }
                     .buttonStyle(.plain)
-                    .transition(.asymmetric(
-                        insertion: .push(from: .leading),
-                        removal: .push(from: .trailing)
-                    ))
                 }
             }
             .padding(.horizontal)

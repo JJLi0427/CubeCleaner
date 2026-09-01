@@ -40,11 +40,8 @@ import Foundation
 /// 9. 符号链接：不跟随，标记为叶子，避免环与幽灵条
 @MainActor
 class FileSystemService: ObservableObject {
-    static let shared = FileSystemService()
-
     // MARK: - Published Properties
     @Published var isScanning = false
-    @Published var scanProgress: Double = 0.0
     @Published var currentPath: String = ""
     @Published var filesScanned: Int = 0
     @Published var folderCount: Int = 0
@@ -57,8 +54,6 @@ class FileSystemService: ObservableObject {
     private var scanTask: Task<Void, Never>?
 
     init() {}
-
-    // MARK: - Public Methods
     func scanDirectory(at url: URL) {
         guard !isScanning else { return }
 
@@ -97,16 +92,9 @@ class FileSystemService: ObservableObject {
         errorMessage = "扫描已取消"
     }
 
-    func getAvailableVolumes() -> [URL] {
-        return fileManager.mountedVolumeURLs(includingResourceValuesForKeys: [
-            .volumeNameKey, .volumeAvailableCapacityKey, .volumeTotalCapacityKey,
-        ]) ?? []
-    }
-
     // MARK: - Private Methods
     private func resetScanState() {
         isScanning = true
-        scanProgress = 0.0
         filesScanned = 0
         folderCount = 0
         totalSize = 0
@@ -204,7 +192,6 @@ class FileSystemService: ObservableObject {
                 self.errorMessage = error
             }
             self.rootNode = root
-            self.scanProgress = 1.0
             self.isScanning = false
         }
     }

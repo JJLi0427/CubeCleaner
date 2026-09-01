@@ -3,7 +3,7 @@ import SwiftUI
 import AppKit
 
 // MARK: - 底部紧凑详情条
-/// 替代原 DetailsSidebarView：单条横向展示选中/悬停项的概要信息与操作。
+/// 单条横向展示选中/悬停项的概要信息与操作。
 /// 显示优先级：悬停预览 > 点击选中。
 /// 固定高度：内容变化（悬停/选中切换）不改变自身高度，避免连带触发
 /// 地图区 GeometryReader 的 size 变化而重算布局。

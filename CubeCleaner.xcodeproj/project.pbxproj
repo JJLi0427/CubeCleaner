@@ -7,23 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C7B41D872E54D10A00F89A5B /* Requirements.md in Resources */ = {isa = PBXBuildFile; fileRef = C7B41D832E54D10A00F89A5B /* Requirements.md */; };
 		C7B41D882E54D10A00F89A5B /* build.sh in Resources */ = {isa = PBXBuildFile; fileRef = C7B41D7F2E54D10A00F89A5B /* build.sh */; };
-		C7B41D892E54D10A00F89A5B /* Interface-Design.md in Resources */ = {isa = PBXBuildFile; fileRef = C7B41D812E54D10A00F89A5B /* Interface-Design.md */; };
-		C7B41D8A2E54D10A00F89A5B /* buildServer.json in Resources */ = {isa = PBXBuildFile; fileRef = C7B41D802E54D10A00F89A5B /* buildServer.json */; };
-		C7B41D8B2E54D10A00F89A5B /* NEXT_STEPS.md in Resources */ = {isa = PBXBuildFile; fileRef = C7B41D852E54D10A00F89A5B /* NEXT_STEPS.md */; };
 		C7B41D8C2E54D10A00F89A5B /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = C7B41D862E54D10A00F89A5B /* README.md */; };
-		C7B41D8D2E54D10A00F89A5B /* Programming-Design.md in Resources */ = {isa = PBXBuildFile; fileRef = C7B41D822E54D10A00F89A5B /* Programming-Design.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		550794F42E4503C0006A9EBA /* CubeCleaner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CubeCleaner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C7B41D7F2E54D10A00F89A5B /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
-		C7B41D802E54D10A00F89A5B /* buildServer.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = buildServer.json; sourceTree = "<group>"; };
-		C7B41D812E54D10A00F89A5B /* Interface-Design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "Interface-Design.md"; sourceTree = "<group>"; };
-		C7B41D822E54D10A00F89A5B /* Programming-Design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "Programming-Design.md"; sourceTree = "<group>"; };
-		C7B41D832E54D10A00F89A5B /* Requirements.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Requirements.md; sourceTree = "<group>"; };
-		C7B41D852E54D10A00F89A5B /* NEXT_STEPS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = NEXT_STEPS.md; sourceTree = "<group>"; };
 		C7B41D862E54D10A00F89A5B /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -50,9 +40,6 @@
 			isa = PBXGroup;
 			children = (
 				C7B41D7F2E54D10A00F89A5B /* build.sh */,
-				C7B41D802E54D10A00F89A5B /* buildServer.json */,
-				C7B41D842E54D10A00F89A5B /* docs */,
-				C7B41D852E54D10A00F89A5B /* NEXT_STEPS.md */,
 				C7B41D862E54D10A00F89A5B /* README.md */,
 				550794F62E4503C0006A9EBA /* CubeCleaner */,
 				550794F52E4503C0006A9EBA /* Products */,
@@ -65,16 +52,6 @@
 				550794F42E4503C0006A9EBA /* CubeCleaner.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		C7B41D842E54D10A00F89A5B /* docs */ = {
-			isa = PBXGroup;
-			children = (
-				C7B41D812E54D10A00F89A5B /* Interface-Design.md */,
-				C7B41D822E54D10A00F89A5B /* Programming-Design.md */,
-				C7B41D832E54D10A00F89A5B /* Requirements.md */,
-			);
-			path = docs;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -141,13 +118,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C7B41D872E54D10A00F89A5B /* Requirements.md in Resources */,
 				C7B41D882E54D10A00F89A5B /* build.sh in Resources */,
-				C7B41D892E54D10A00F89A5B /* Interface-Design.md in Resources */,
-				C7B41D8A2E54D10A00F89A5B /* buildServer.json in Resources */,
-				C7B41D8B2E54D10A00F89A5B /* NEXT_STEPS.md in Resources */,
 				C7B41D8C2E54D10A00F89A5B /* README.md in Resources */,
-				C7B41D8D2E54D10A00F89A5B /* Programming-Design.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -4,34 +4,24 @@ import SwiftUI
 import Combine
 import Foundation
 
-// MARK: - Binary Tree TreeMap 布局计算器
-/// Binary Tree TreeMap算法实现
-/// Linus式设计原则：消除特殊情况，最简数据结构，零废话
-///
-/// 核心思想：
-/// 1. 把复杂的Squarified算法扔掉 - 它是过度设计的垃圾
-/// 2. 用Binary Tree简单二分法：大的一半，小的一半，完事
-/// 3. 没有特殊情况，没有复杂计算，就是递归二分
-/// 4. 数据结构决定算法 - TreeMap就是个Binary Tree的可视化
+// MARK: - TreeMap 布局计算器
+/// Squarified TreeMap 布局算法（Bruls/Huijsen/van Wijk 2000）。
+/// 把子节点按面积比例铺进矩形，直接优化长宽比，消除细长条。
 class BinaryTreeMapCalculator: ObservableObject {
 
-    // MARK: - 核心常量 - 实用主义优先
+    // MARK: - 核心常量
     private let colorSchemeManager = ColorSchemeManager.shared
     private let minVisibleSize: CGFloat = 24  // 最小可见尺寸：24x24像素，用户能看清
     private let maxDepth: Int = 8  // 限制递归深度，避免过度分割
     private let minFileRatio: Double = 0.01  // 聚合阈值：小于总大小1%的文件归入"其他"块
 
-    // MARK: - 全局状态 - 一个变量搞定颜色
+    // MARK: - 颜色深度基准（按类型最大叶子）
     private var maxSizeByType: [FileType: Int64] = [:]
 
-    // MARK: - 主入口 - 就这一个函数，其他都是实现细节
-    /**
-     * Binary Tree TreeMap主算法
-     * 输入：节点和矩形 -> 输出：矩形列表
-     * 没有花哨的东西，就是递归二分
-     */
+    // MARK: - 主入口
+    /// 输入节点与可用矩形，输出叶子矩形列表。
     func calculateLayout(for node: TreeNode, in rect: CGRect) -> [TreeMapRectangle] {
-        // 太小就不画，实用主义
+        // 太小就不画
         if rect.width < minVisibleSize || rect.height < minVisibleSize {
             return []
         }
@@ -49,15 +39,7 @@ class BinaryTreeMapCalculator: ObservableObject {
         return binaryTreeMap(node: node, rect: rect, depth: 0)
     }
 
-    // MARK: - 核心算法 - Binary Tree递归分割
-    /**
-     * Binary Tree核心算法 - 重新设计版本
-     *
-     * Linus式设计原则：
-     * 1. 消除虚拟节点 - 它们是过度设计的垃圾
-     * 2. 直接处理节点数组 - 简单粗暴有效
-     * 3. 没有特殊情况 - 递归到底
-     */
+    // MARK: - 核心算法 - 递归分割
     private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int, expandAggregated: Bool = false) -> [TreeMapRectangle] {
         // 获取有效子节点
         let children = getValidChildren(of: node)
@@ -219,7 +201,7 @@ class BinaryTreeMapCalculator: ObservableObject {
         return (result, remaining)
     }
 
-    // MARK: - 工具函数 - 简单直接，没有复杂逻辑
+    // MARK: - 工具函数
 
     /**
      * 获取有效子节点 - 聚合"其他"块策略

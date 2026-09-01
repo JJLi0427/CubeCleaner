@@ -2,7 +2,7 @@
 import SwiftUI
 
 // MARK: - 横向类型分布图例条
-/// 替代原纵向 LegendSidebarView：按类型横向排布的 chip，点击高亮对应类型。
+/// 按类型横向排布的 chip，点击高亮对应类型。
 /// 位于 StatsBarView 与 TypeRatioBarView 之下、TreeMap 之上。
 struct TypeLegendStripView: View {
     let entries: [ColorSchemeManager.TypeBreakdownEntry]
