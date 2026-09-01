@@ -18,9 +18,7 @@ struct ContentView: View {
     @State private var currentRoot: TreeNode?
     @State private var showingFilePicker = false
 
-    // v0.3: 图例侧栏 + 类型高亮 + 类型分布
-    @State private var showLegend: Bool = true
-    @State private var isAnimatingSidebar: Bool = false
+    // v0.3: 类型高亮 + 类型分布（图例已改横向条，不再有侧栏开关）
     @State private var highlightedFileType: FileType? = nil
     @State private var typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry] = []
 
@@ -69,24 +67,13 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
-
-                Button {
-                    isAnimatingSidebar = true
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        showLegend.toggle()
-                    }
-                } label: {
-                    Image(systemName: showLegend ? "sidebar.left" : "sidebar.right")
-                }
-                .buttonStyle(.bordered)
-                .help(showLegend ? "隐藏类型图例" : "显示类型图例")
             }
             .padding()
             .background(.ultraThinMaterial)
 
             Divider()
 
-            // 统计条 + 类型比例条
+            // 统计条 + 类型比例条 + 横向类型图例（均固定宽度，不遮挡地图）
             if fileSystemService.rootNode != nil || fileSystemService.isScanning {
                 StatsBarView(
                     totalSize: subtreeTotalSize,
@@ -97,15 +84,20 @@ struct ContentView: View {
                 TypeRatioBarView(entries: typeBreakdown, isScanning: fileSystemService.isScanning)
                     .padding(.horizontal)
                     .padding(.bottom, 8)
-                    .background(.ultraThinMaterial)
+                TypeLegendStripView(
+                    entries: typeBreakdown,
+                    highlightedFileType: highlightedFileType,
+                    onToggleHighlight: { type in
+                        highlightedFileType = (highlightedFileType == type) ? nil : type
+                    }
+                )
                 Divider()
             }
 
-            // 主内容区域：Canvas + 图例侧栏
+            // 主内容区域：TreeMap（全宽，导航条浮于其顶部）
             GeometryReader { geometry in
-                HStack(spacing: 0) {
-                    ZStack {
-                        Color(.controlBackgroundColor)
+                ZStack {
+                    Color(.controlBackgroundColor)
 
                     // 导航条（返回按钮 + 面包屑）- 浮于 TreeMap 顶部
                     VStack(spacing: 0) {
@@ -239,27 +231,7 @@ struct ContentView: View {
                                 .transition(.opacity)
                         }
                     }
-                    }  // close ZStack
-
-                    // 侧栏（图例上/详情下双区）
-                    if showLegend {
-                        SidebarDualView(
-                            selectedNode: $selectedNode,
-                            hoveredNode: hoveredNode,
-                            typeBreakdown: typeBreakdown,
-                            highlightedFileType: highlightedFileType,
-                            onToggleHighlight: { type in
-                                highlightedFileType = (highlightedFileType == type) ? nil : type
-                            },
-                            fileSystemService: fileSystemService,
-                            scanRootURL: scanRootURL,
-                            onRequestDelete: { _ in
-                                showingDeleteConfirm = true
-                            }
-                        )
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                }  // close HStack
+                }  // close ZStack
                 .onAppear {
                     Task {
                         await updateLayoutOptimized(size: geometry.size)
@@ -276,6 +248,18 @@ struct ContentView: View {
                         await updateLayoutOptimized(size: geometry.size)
                     }
                 }
+            }
+
+            // 底部详情条（选中/悬停项概要 + 操作）
+            if fileSystemService.rootNode != nil {
+                BottomDetailBarView(
+                    node: hoveredNode ?? selectedNode,
+                    fileSystemService: fileSystemService,
+                    scanRootURL: scanRootURL,
+                    onRequestDelete: { _ in
+                        showingDeleteConfirm = true
+                    }
+                )
             }
 
             // 状态栏（统计已上移顶部，此处仅留错误/就绪/版本）
@@ -352,10 +336,7 @@ struct ContentView: View {
         layoutTask?.cancel()
         resizeTimer?.invalidate()
 
-        // 侧栏显隐驱动的尺寸变化不清空矩形（动画期间），仅等停手后重算
-        if isAnimatingSidebar {
-            isAnimatingSidebar = false
-        } else if !isResizing {
+        if !isResizing {
             isResizing = true
             rectangles = []  // 清除所有矩形
         }
