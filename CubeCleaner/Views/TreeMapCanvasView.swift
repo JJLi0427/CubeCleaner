@@ -41,18 +41,27 @@ struct TreeMapCanvasView: View {
                 }
             }
 
-            // 悬停发光浮层（Canvas 命令式绘制无法直接动画透明度，用 SwiftUI 浮层）
+            // 悬停高亮浮层：macOS 26 用液态玻璃高亮（透出下方矩形颜色 + 玻璃边缘高光），
+            // 旧系统回退为白色细描边。Canvas 命令式绘制无法直接动画透明度，用 SwiftUI 浮层。
             if let hov = hoveredRectangle {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: hov.rect.width, height: hov.rect.height)
-                    .overlay(
+                Group {
+                    if #available(macOS 26.0, *) {
+                        RoundedRectangle(cornerRadius: Radius.card)
+                            .fill(Color.white.opacity(0.08))
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Radius.card))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Radius.card)
+                                    .stroke(Color.white.opacity(0.6), lineWidth: 1.5)
+                            )
+                    } else {
                         RoundedRectangle(cornerRadius: Radius.card)
                             .stroke(Color.white.opacity(0.6), lineWidth: 1.5)
-                    )
-                    .position(x: hov.rect.midX, y: hov.rect.midY)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
+                    }
+                }
+                .frame(width: hov.rect.width, height: hov.rect.height)
+                .position(x: hov.rect.midX, y: hov.rect.midY)
+                .transition(.opacity)
+                .allowsHitTesting(false)
             }
 
             // 选中描边浮层

@@ -28,6 +28,6 @@ struct NavigationBarView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 4)
-        .background(.ultraThinMaterial)
+        .glassBackground()
     }
 }

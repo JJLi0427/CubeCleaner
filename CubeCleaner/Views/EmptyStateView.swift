@@ -30,6 +30,6 @@ struct EmptyStateView: View {
         }
         .frame(maxWidth: 400)
         .padding(24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .glassBackground(cornerRadius: Radius.card)
     }
 }

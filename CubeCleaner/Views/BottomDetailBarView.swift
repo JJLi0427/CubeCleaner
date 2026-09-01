@@ -82,7 +82,7 @@ struct BottomDetailBarView: View {
         }
         .padding(.horizontal)
         .frame(height: 36)
-        .background(.ultraThinMaterial)
+        .glassBackground()
     }
 
     /// 扫描边界角标：跨卷/符号链接/已计入

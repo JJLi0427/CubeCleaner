@@ -69,7 +69,7 @@ struct ContentView: View {
                 }
             }
             .padding()
-            .background(.ultraThinMaterial)
+            .glassBackground()
 
             Divider()
 
@@ -281,7 +281,7 @@ struct ContentView: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 6)
-            .background(.ultraThinMaterial)
+            .glassBackground()
         }
         .confirmationDialog(
             "移到废纸篓",

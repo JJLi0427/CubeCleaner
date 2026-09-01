@@ -32,7 +32,7 @@ struct StatsBarView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
+        .glassBackground()
     }
 }
 
