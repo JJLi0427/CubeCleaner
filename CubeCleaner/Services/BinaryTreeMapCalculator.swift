@@ -303,7 +303,9 @@ class BinaryTreeMapCalculator: ObservableObject {
         var result: [FileType: Int64] = [:]
 
         func traverse(_ current: TreeNode) {
-            if current.item.isDirectory {
+            // 聚合"其他"块 isDirectory 为 false，但持有内部小文件，穿透遍历，
+            // 否则整块被当成单个 .other 文件，撑大 .other 的深度配色基准。
+            if current.item.isDirectory || current.isAggregated {
                 current.children.forEach { traverse($0) }
             } else {
                 let ft = FileType.from(extension: current.item.fileExtension)

@@ -92,7 +92,9 @@ class ColorSchemeManager: ObservableObject {
         for type in FileType.allCases { sizes[type] = 0 }
 
         func traverse(_ current: TreeNode) {
-            if current.item.isDirectory {
+            // 聚合"其他"块 isDirectory 为 false（面积守恒设计），但持有 children，
+            // 钻取后须穿透它遍历内部小文件，否则会被当成单个叶子文件。
+            if current.item.isDirectory || current.isAggregated {
                 for child in current.children { traverse(child) }
             } else {
                 let ft = FileType.from(extension: current.item.fileExtension)
@@ -107,9 +109,10 @@ class ColorSchemeManager: ObservableObject {
             .sorted { $0.size > $1.size }
     }
 
-    /// 统计 node 子树的叶子文件数（非目录）
+    /// 统计 node 子树的叶子文件数（非目录）。
+    /// 聚合"其他"块 isDirectory 为 false，需穿透其 children 统计内部文件。
     func fileCountInSubtree(_ node: TreeNode) -> Int {
-        if node.item.isDirectory {
+        if node.item.isDirectory || node.isAggregated {
             return node.children.reduce(0) { $0 + fileCountInSubtree($1) }
         } else {
             return 1
@@ -118,6 +121,9 @@ class ColorSchemeManager: ObservableObject {
 
     /// 统计 node 子树的目录数（含 node 自身若为目录）
     func folderCountInSubtree(_ node: TreeNode) -> Int {
+        if node.isAggregated {
+            return node.children.reduce(0) { $0 + folderCountInSubtree($1) }
+        }
         let selfCount = node.item.isDirectory ? 1 : 0
         return selfCount + node.children.reduce(0) { $0 + folderCountInSubtree($1) }
     }
