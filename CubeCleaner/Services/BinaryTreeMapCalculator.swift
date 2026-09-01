@@ -289,6 +289,7 @@ class BinaryTreeMapCalculator: ObservableObject {
         otherNode.markAsAggregated()
         // 复用原有子节点（不改其 parent），仅挂到 otherNode.children 下，
         // 供钻取后布局使用；面包屑只需沿 otherNode.parent 上溯即可。
+        // 聚合节点 totalSize 保持 item.size（面积守恒，见 computeTotalSize 的 isAggregated 短路）。
         for child in aggregatedChildren {
             otherNode.addChild(child)
         }

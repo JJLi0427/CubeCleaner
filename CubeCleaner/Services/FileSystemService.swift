@@ -150,7 +150,9 @@ class FileSystemService: ObservableObject {
                 await scanRecursively(node: root!, currentDepth: 0, visited: &visited, progress: &progress, mountPoints: mountPoints)
             }
 
-            // 扫描后整树降序排序，提升 TreeMap 布局质量（大块在前）。纯内存操作，后台线程无副作用。
+            // 扫描后自底向上缓存一次聚合大小，此后 totalSize 均 O(1)（比较器/布局/统计不再递归）。
+            root?.computeTotalSize()
+            // 整树降序排序，提升 TreeMap 布局质量（大块在前）。纯内存操作，后台线程无副作用。
             root?.sortChildren { $0.totalSize > $1.totalSize }
         } catch {
             scanError = "扫描失败: \(error.localizedDescription)"

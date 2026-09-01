@@ -1,6 +1,5 @@
 // TreeNode.swift — 树形结构节点模型
 
-import Combine
 import Foundation
 
 // MARK: TreeNode - 树形结构节点模型
@@ -8,16 +7,16 @@ import Foundation
 /// 支持递归遍历和层次化显示
 ///
 /// 特性：
-/// - ObservableObject: 支持SwiftUI数据绑定
 /// - 父子关系维护
-/// - 展开/折叠状态管理
-/// - 递归大小计算
-class TreeNode: ObservableObject, Identifiable, Equatable {
+/// - 缓存聚合大小（扫描后自底向上一次计算，此后 O(1) 读取）
+///
+/// 普通 class（非 ObservableObject）：树节点不被 SwiftUI 单独观察，
+/// 整棵树的刷新由 FileSystemService.rootNode 一次性驱动，避免每个节点的 Combine 开销。
+class TreeNode: Identifiable, Equatable {
     let id = UUID()
     let item: FileSystemItem
     let parent: TreeNode?
-    @Published var children: [TreeNode] = []
-    @Published var isExpanded: Bool = false
+    var children: [TreeNode] = []
 
     /// 是否为聚合的虚拟"其他"节点
     private(set) var isAggregated: Bool = false
@@ -31,6 +30,10 @@ class TreeNode: ObservableObject, Identifiable, Equatable {
         case alreadyCounted   // 硬链接/firmlink 目标，已在别处计入
     }
     private(set) var scanBoundary: ScanBoundary = .normal
+
+    /// 缓存聚合大小（含所有子项）。扫描建树后由 computeTotalSize() 自底向上填充一次。
+    /// 聚合"其他"块保持 item.size（其 children 不累加，面积守恒，见 BinaryTreeMapCalculator）。
+    private(set) var totalSize: Int64
 
     /// 标记为聚合节点
     func markAsAggregated() {
@@ -47,17 +50,10 @@ class TreeNode: ObservableObject, Identifiable, Equatable {
         (parent?.level ?? -1) + 1
     }
 
-    /// 递归计算总大小（包含所有子项）
-    var totalSize: Int64 {
-        if item.isDirectory {
-            return children.reduce(item.size) { $0 + $1.totalSize }
-        }
-        return item.size
-    }
-
     init(item: FileSystemItem, parent: TreeNode? = nil) {
         self.item = item
         self.parent = parent
+        self.totalSize = item.size
     }
 
     /// 添加子节点
@@ -65,9 +61,23 @@ class TreeNode: ObservableObject, Identifiable, Equatable {
         children.append(child)
     }
 
-    /// 移除子节点
-    func removeChild(_ child: TreeNode) {
-        children.removeAll { $0.id == child.id }
+    /// 自底向上计算并缓存子树聚合大小。扫描建树完成后调用一次，返回本节点聚合大小。
+    /// 聚合节点不累加其 children（面积守恒，children 仅是挂载的小文件引用）。
+    @discardableResult
+    func computeTotalSize() -> Int64 {
+        if isAggregated {
+            return totalSize
+        }
+        if item.isDirectory {
+            var sum: Int64 = 0
+            for child in children {
+                sum += child.computeTotalSize()
+            }
+            totalSize = item.size + sum
+        } else {
+            totalSize = item.size
+        }
+        return totalSize
     }
 
     /// 递归排序子节点
