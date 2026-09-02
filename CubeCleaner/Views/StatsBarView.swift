@@ -1,7 +1,6 @@
 // StatsBarView.swift — 统计条视图 + 指标块
 import SwiftUI
 
-// MARK: - 统计条视图
 struct StatsBarView: View {
     let totalSize: Int64
     let fileCount: Int

@@ -2,23 +2,10 @@
 
 import Foundation
 
-// MARK: FileType - 文件类型枚举
-/// 文件类型分类枚举
-/// 根据文件扩展名进行智能分类
-///
-/// 支持的类型：
-/// - document: 文档类文件
-/// - image: 图片类文件
-/// - video: 视频类文件
-/// - audio: 音频类文件
-/// - archive: 压缩包类文件
-/// - application: 应用程序类文件
-/// - system: 系统类文件
-/// - other: 其他类型文件
+/// 根据文件扩展名分类文件类型。
 enum FileType: String, CaseIterable {
     case document, image, video, audio, archive, application, system, other
 
-    /// 根据文件扩展名判断文件类型
     static func from(extension: String) -> FileType {
         let ext = `extension`.lowercased()
         switch ext {

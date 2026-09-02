@@ -1,7 +1,6 @@
 // TypeRatioBarView.swift — 类型占比比例条
 import SwiftUI
 
-// MARK: - 类型占比比例条
 struct TypeRatioBarView: View {
     let entries: [ColorSchemeManager.TypeBreakdownEntry]
     let isScanning: Bool

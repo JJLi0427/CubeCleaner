@@ -11,7 +11,7 @@ import Foundation
         let ino: UInt64
     }
 
-    // MARK: - 扫描进度（后台线程本地累加，节流回写主线程）
+    // MARK: - 扫描进度
     /// 后台扫描线程就地累加的计数器，避免每项都 hop 主线程更新 @Published。
     /// 达到节流阈值（50 项或 100ms）时一次性同步到 FileSystemService 的 @Published。
     private struct ScanProgress {
@@ -19,25 +19,13 @@ import Foundation
         var folderCount: Int = 0
         var totalSize: Int64 = 0
         var currentPath: String = ""
-        /// 上次回写主线程时的 filesScanned，用于判断是否到节流阈值
         var lastFlushedFiles: Int = 0
-        /// 上次回写主线程的时间戳（DispatchTime）
         var lastFlushedTime: DispatchTime = .now()
     }
 
 // MARK: FileSystemService - 文件系统扫描服务
-/// 高性能文件系统扫描服务
-///
-/// 主要特性：
-/// 1. 批量API优化：使用getattrlistbulk减少系统调用
-/// 2. 内存管理：分批处理，控制内存峰值
-/// 3. 后台扫描：阻塞 IO 与树构建跑在 Task.detached 后台线程，主线程仅做节流进度回写与最终接收（P0-3）
-/// 4. 容错机制：批量扫描失败时自动回退
-/// 5. 进度追踪：节流回写（50项/100ms）避免高频 @Published 写入
-/// 6. 权限处理：安全的文件系统访问
-/// 7. 卷边界：跨挂载点的子目录不递归，避免大小虚高（如 /System 带进 /System/Volumes/Data）
-/// 8. 去重：硬链接/firmlink 同一对象只计一次（FR-006）
-/// 9. 符号链接：不跟随，标记为叶子，避免环与幽灵条
+/// 高性能文件系统扫描：getattrlistbulk 批量读取、后台线程、节流进度回写、
+/// 硬链接/firmlink 去重、跨卷边界、符号链接不跟随。
 @MainActor
 class FileSystemService: ObservableObject {
     // MARK: - Published Properties
@@ -56,12 +44,9 @@ class FileSystemService: ObservableObject {
     init() {}
     func scanDirectory(at url: URL) {
         guard !isScanning else { return }
-
-        // 重置状态
         resetScanState()
 
-        // 阻塞 IO 与树构建跑在后台线程（Task.detached 不继承 @MainActor），
-        // 保持主线程/UI 在扫描期间响应。结果回主线程接收。
+        // 阻塞 IO 与树构建跑在后台线程（Task.detached 不继承 @MainActor）。
         scanTask = Task.detached(priority: .utility) { [weak self] in
             await self?.performScanBackground(at: url)
         }
@@ -103,20 +88,16 @@ class FileSystemService: ObservableObject {
         rootNode = nil
     }
 
-    /// 后台扫描入口（非 isolated，跑在 Task.detached 线程上）。
-    /// security scope 配对在此 defer；整棵树后台构建（扫描期间无 SwiftUI 观察者，安全）；
-    /// 节流回写进度；最后回主线程一次性赋 rootNode 并结束扫描。
+    /// 后台扫描入口（nonisolated，跑在 Task.detached 线程）。
     private nonisolated func performScanBackground(at url: URL) async {
         var progress = ScanProgress()
         var visited = Set<VisitKey>()
-        // 挂载点集合：一次 getmntinfo 取全，后续 isMountPoint 走 O(1) 集合查找，
-        // 避免 16 万目录每个都 statfs（实测 /System 省 ~233ms）。
+        // 挂载点集合：一次 getmntinfo 取全，之后 isMountPoint 走 O(1) 集合查找。
         let mountPoints = buildMountPointSet()
         var root: TreeNode?
         var scanError: String?
 
         do {
-            // security scope：进程级，start 后后台线程访问该 URL 下文件合法。
             guard url.startAccessingSecurityScopedResource() else {
                 throw FileSystemError.accessDenied
             }
@@ -125,11 +106,9 @@ class FileSystemService: ObservableObject {
             progress.currentPath = url.path
             _ = await flushProgress(progress)
 
-            // 创建根节点（URLResourceValues 可在后台线程读）
             let rootItem = try createFileSystemItem(from: url)
             root = TreeNode(item: rootItem)
 
-            // 根节点自身先入去重集合
             if let key = visitKey(forPath: url.path) {
                 visited.insert(key)
             }
@@ -138,16 +117,15 @@ class FileSystemService: ObservableObject {
                 await scanRecursively(node: root!, currentDepth: 0, visited: &visited, progress: &progress, mountPoints: mountPoints)
             }
 
-            // 扫描后自底向上缓存一次聚合大小，此后 totalSize 均 O(1)（比较器/布局/统计不再递归）。
+            // 扫描后自底向上缓存一次聚合大小，此后 totalSize 均 O(1)。
             root?.computeTotalSize()
-            // 整树降序排序，提升 TreeMap 布局质量（大块在前）。纯内存操作，后台线程无副作用。
+            // 整树降序排序，提升 TreeMap 布局质量（大块在前）。
             root?.sortChildren { $0.totalSize > $1.totalSize }
         } catch {
             scanError = "扫描失败: \(error.localizedDescription)"
             print("扫描失败: \(error)")
         }
 
-        // 最终回写：剩余进度 + rootNode + 结束状态，一次性到主线程
         await flushProgressFinal(progress, root: root, error: scanError)
     }
 
@@ -197,42 +175,22 @@ class FileSystemService: ObservableObject {
     }
 
     /**
-     * 使用优化的批量扫描算法递归扫描目录（非 isolated 同步递归，跑在后台线程）。
-     *
-     * 性能优化策略：
-     * 1. 批量API：使用getattrlistbulk一次获取多个文件属性
-     * 2. 内存管理：分批处理，控制内存使用峰值
-     * 3. 错误恢复：批量扫描失败时自动回退到传统方法
-     * 4. 取消支持：支持任务取消，避免无用的计算
-     *
-     * @param node: 要扫描的目录节点
-     * @param currentDepth: 当前递归深度
-     * @param visited: 已访问对象集合（去重）
-     * @param progress: 进度计数器（节流回写主线程）
-     * @param mountPoints: 挂载点路径集合（用于跨卷判断，O(1) 查找）
+     * 使用批量扫描算法递归扫描目录（nonisolated 同步递归，跑在后台线程）。
+     * 批量扫描失败时回退到 FileManager 传统方法。
      */
     private nonisolated func scanRecursively(
         node: TreeNode, currentDepth: Int, visited: inout Set<VisitKey>, progress: inout ScanProgress,
         mountPoints: Set<String>
     ) async {
-        // 限制扫描深度以避免过深递归和提高性能
         guard currentDepth < 10 else { return }
-
-        // 检查任务是否被取消
         guard !Task.isCancelled else { return }
 
         do {
-            // 使用批量扫描API获取目录内容
             let bulkAttributes = try BulkFileScanner.scanDirectory(at: node.item.path.path)
-
-            // 内存优化：使用懒加载和批处理
-            let batchSize = 100  // 每批处理100个文件，平衡内存和性能
+            let batchSize = 100
 
             for batch in bulkAttributes.chunked(into: batchSize) {
-                // 检查任务是否被取消
                 guard !Task.isCancelled else { return }
-
-                // 批量处理文件
                 await processBatch(batch, parentNode: node, currentDepth: currentDepth, visited: &visited, progress: &progress, mountPoints: mountPoints)
 
                 // 节流回写进度（异步 hop 主线程，天然让出，无需 Task.yield）
@@ -243,32 +201,21 @@ class FileSystemService: ObservableObject {
 
         } catch {
             print("批量扫描目录失败 \(node.item.path): \(error)")
-            // 回退到传统扫描方法
             await scanRecursivelyFallback(node: node, currentDepth: currentDepth, visited: &visited, progress: &progress)
         }
     }
 
     /**
-     * 批量处理文件属性数据（非 isolated，后台线程）。
-     * 内存优化策略：
-     * - 分批处理：避免一次性加载大量文件到内存
-     * - 即时处理：处理完一批后立即释放内存
-     * @param batch: 当前批次的文件属性
-     * @param parentNode: 父节点
-     * @param currentDepth: 当前递归深度
-     * @param visited: 已访问对象集合（去重）
-     * @param progress: 进度计数器
-     * @param mountPoints: 挂载点路径集合（O(1) 跨卷判断）
+     * 批量处理文件属性数据（nonisolated，后台线程）。
      */
     private nonisolated func processBatch(
         _ batch: [BulkFileAttributes], parentNode: TreeNode, currentDepth: Int,
         visited: inout Set<VisitKey>, progress: inout ScanProgress, mountPoints: Set<String>
     ) async {
         for attributes in batch {
-            // 检查任务是否被取消
             guard !Task.isCancelled else { return }
 
-            // 符号链接：不跟随，标记为叶子，不递归。其大小不计入统计。
+            // 符号链接：不跟随，标记为叶子，大小不计入统计。
             if attributes.isSymbolicLink {
                 let item = FileSystemItem(
                     name: attributes.name,
@@ -283,7 +230,6 @@ class FileSystemService: ObservableObject {
                 continue
             }
 
-            // 创建FileSystemItem和TreeNode
             let item = FileSystemItem(
                 name: attributes.name,
                 path: URL(fileURLWithPath: attributes.path),
@@ -295,22 +241,17 @@ class FileSystemService: ObservableObject {
             parentNode.addChild(childNode)
 
             // 目录与文件统一用 bulk 返回的 fileID 去重（已是 inode，零额外 syscall，免 lstat）。
-            // 闸门顺序：符号链接已前置跳过；目录先判跨卷挂载点，再判去重。
             if attributes.isDirectory {
                 progress.folderCount += 1
 
-                // 闸门 1：跨挂载点 —— 子目录本身是另一个卷的挂载点（如 /System/Volumes/Data）。
-                // 不递归，标为跨卷叶子，避免把整个数据卷算进来导致大小虚高。
-                // 用预构建的 mountPoints 集合 O(1) 判断，替代每目录 statfs。
+                // 闸门 1：跨挂载点 —— 不递归，标为跨卷叶子。
                 if mountPoints.contains(attributes.path) {
                     childNode.markScanBoundary(.crossVolume)
                     progress.filesScanned += 1
                     continue
                 }
 
-                // 闸门 2：硬链接/firmlink 去重 —— 同一对象已在别处计入。
-                // 目录用 bulk fileID 去重（与文件统一），免 lstat。
-                // fileID 为 0 时（非 APFS 不可靠）跳过去重。
+                // 闸门 2：硬链接/firmlink 去重。fileID 为 0 时（非 APFS 不可靠）跳过去重。
                 if let fid = attributes.fileID, fid != 0 {
                     let key = VisitKey(dev: 0, ino: fid)
                     if visited.contains(key) {
@@ -328,8 +269,7 @@ class FileSystemService: ObservableObject {
 
                 await scanRecursively(node: childNode, currentDepth: currentDepth + 1, visited: &visited, progress: &progress, mountPoints: mountPoints)
             } else {
-                // 普通文件：硬链接去重 —— 直接用 bulk 返回的 fileID（已是 inode），
-                // 零额外 syscall（不必 lstat）。fileID 为 0 时（非 APFS 不可靠）跳过去重。
+                // 普通文件：硬链接去重，直接用 bulk 返回的 fileID。
                 progress.filesScanned += 1
                 if let fid = attributes.fileID, fid != 0 {
                     let key = VisitKey(dev: 0, ino: fid)
@@ -352,17 +292,13 @@ class FileSystemService: ObservableObject {
     }
 
     /**
-     * 传统扫描方法的回退实现（非 isolated，后台线程）
-     * 当批量扫描失败时使用此方法保证兼容性
-     * 同样应用跨挂载点 / 符号链接 / 去重三道闸门，保证回退路径行为一致。
+     * 传统扫描方法的回退实现（nonisolated，后台线程）。
+     * 当批量扫描失败时使用此方法保证兼容性。
      */
     private nonisolated func scanRecursivelyFallback(
         node: TreeNode, currentDepth: Int, visited: inout Set<VisitKey>, progress: inout ScanProgress
     ) async {
-        // 限制扫描深度以避免过深递归和提高性能
         guard currentDepth < 10 else { return }
-
-        // 检查任务是否被取消
         guard !Task.isCancelled else { return }
 
         do {
@@ -375,13 +311,11 @@ class FileSystemService: ObservableObject {
             )
 
             for itemURL in contents {
-                // 检查任务是否被取消
                 guard !Task.isCancelled else { return }
 
                 // 用 lstat 取真实类型与 inode（contentsOfDirectory 可能跟随符号链接）
                 guard let (isDir, isLink, size) = lstatItem(at: itemURL.path) else { continue }
 
-                // 符号链接：不跟随，标叶子。
                 if isLink {
                     let item = FileSystemItem(
                         name: itemURL.lastPathComponent,
@@ -408,14 +342,12 @@ class FileSystemService: ObservableObject {
                 if isDir {
                     progress.folderCount += 1
 
-                    // 闸门 1：跨挂载点
                     if isMountPoint(itemURL.path) {
                         childNode.markScanBoundary(.crossVolume)
                         progress.filesScanned += 1
                         continue
                     }
 
-                    // 闸门 2：去重
                     if let key = visitKey(forPath: itemURL.path) {
                         if visited.contains(key) {
                             childNode.markScanBoundary(.alreadyCounted)
@@ -433,7 +365,7 @@ class FileSystemService: ObservableObject {
                     await scanRecursivelyFallback(
                         node: childNode, currentDepth: currentDepth + 1, visited: &visited, progress: &progress)
                 } else {
-                    // 普通文件：用 lstat 取 inode 去重（回退路径无 bulk fileID，故仍 lstat）
+                    // 普通文件：用 lstat 取 inode 去重（回退路径无 bulk fileID）
                     progress.filesScanned += 1
                     if let key = visitKey(forPath: itemURL.path) {
                         if visited.contains(key) {
@@ -457,7 +389,6 @@ class FileSystemService: ObservableObject {
         }
     }
 
-    /// 创建FileSystemItem实例（nonisolated，后台线程可调）
     private nonisolated func createFileSystemItem(from url: URL) throws -> FileSystemItem {
         let resourceValues = try url.resourceValues(forKeys: [
             .nameKey, .fileSizeKey, .isDirectoryKey,
@@ -473,8 +404,7 @@ class FileSystemService: ObservableObject {
 
     // MARK: - 扫描边界 / 去重工具（nonisolated，可从后台线程调）
 
-    /// 一次性取当前所有挂载点的 mntonname 集合。扫描开始时调一次，
-    /// 之后跨卷判断走 O(1) 集合查找，避免 16 万目录每个都 statfs（实测 /System 省 ~233ms）。
+    /// 一次性取当前所有挂载点的 mntonname 集合，之后跨卷判断走 O(1) 集合查找。
     private nonisolated func buildMountPointSet() -> Set<String> {
         var set = Set<String>()
         var mntbuf: UnsafeMutablePointer<statfs>? = nil
@@ -483,8 +413,7 @@ class FileSystemService: ObservableObject {
         for i in 0..<Int(count) {
             let mntonName = buf[i].f_mntonname
             let capacity = MemoryLayout.size(ofValue: mntonName)
-            // f_mntonname 是 [CChar; MNAMELEN] 的 C 数组（Swift 里是元组）。拷贝到局部再取指针转 String，
-            // 避免对 statfs 的重叠访问。
+            // f_mntonname 是 [CChar; MNAMELEN] 的 C 数组，拷贝到局部再取指针转 String。
             let path = withUnsafePointer(to: mntonName) { ptr -> String in
                 ptr.withMemoryRebound(to: CChar.self, capacity: capacity) {
                     String(cString: $0)
@@ -495,14 +424,11 @@ class FileSystemService: ObservableObject {
         return set
     }
 
-    /// 判断 path 是否是某个卷的挂载点：statfs(path).f_mntonname == path。
-    /// 用于回退路径（FileManager，无预构建集合时）的跨挂载点判断。
+    /// 判断 path 是否是某个卷的挂载点：statfs(path).f_mntonname == path（回退路径用）。
     private nonisolated func isMountPoint(_ path: String) -> Bool {
         var s = statfs()
         let result = path.withCString { statfs($0, &s) }
         guard result == 0 else { return false }
-        // f_mntonname 是 [CChar; MNAMELEN] 的 C 数组（Swift 里是元组）。先把元组拷贝到局部，
-        // 再取指针转 String 比较，避免对 s 的重叠访问。
         let mntonName = s.f_mntonname
         let capacity = MemoryLayout.size(ofValue: mntonName)
         return withUnsafePointer(to: mntonName) { ptr -> Bool in
@@ -512,8 +438,7 @@ class FileSystemService: ObservableObject {
         }
     }
 
-    /// 取 (st_dev, st_ino) 去重键。用 lstat（不跟随符号链接），失败返回 nil。
-    /// 仅回退路径（FileManager）与根节点用——bulk 路径已用 bulk 返回的 fileID 去重，免 lstat。
+    /// 取 (st_dev, st_ino) 去重键，用 lstat（不跟随符号链接），失败返回 nil。
     private nonisolated func visitKey(forPath path: String) -> VisitKey? {
         var st = stat()
         let result = path.withCString { lstat($0, &st) }

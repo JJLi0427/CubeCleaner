@@ -12,17 +12,14 @@ struct ContentView: View {
     @StateObject private var fileSystemService = FileSystemService()
     @State private var layoutCalculator = BinaryTreeMapCalculator()
     @State private var rectangles: [TreeMapRectangle] = []
-    @State private var selectedPath: URL?
     @State private var hoveredNode: TreeNode?
     @State private var selectedNode: TreeNode?
     @State private var currentRoot: TreeNode?
     @State private var showingFilePicker = false
 
-    // v0.3: 类型高亮 + 类型分布（图例已改横向条，不再有侧栏开关）
     @State private var highlightedFileType: FileType? = nil
     @State private var typeBreakdown: [ColorSchemeManager.TypeBreakdownEntry] = []
 
-    // v0.3.1/v0.3.2: 侧栏双区 + 删除 + 钻取统计刷新 + 类型内深度配色
     @State private var scanRootURL: URL?
     @State private var showingDeleteConfirm = false
     @State private var subtreeTotalSize: Int64 = 0
@@ -257,7 +254,7 @@ struct ContentView: View {
                 } else {
                     Spacer()
                 }
-                Text("CubeCleaner v0.3.5")
+                Text("CubeCleaner v1.0.0")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -297,7 +294,6 @@ struct ContentView: View {
             switch result {
             case .success(let urls):
                 if let url = urls.first {
-                    selectedPath = url
                     scanRootURL = url
                     fileSystemService.scanDirectory(at: url)
                 }
@@ -383,13 +379,6 @@ struct ContentView: View {
 
         // 等待布局任务完成
         await layoutTask?.value
-    }
-
-    // 兼容旧接口的同步方法
-    private func updateLayout(size: CGSize) {
-        Task {
-            await updateLayoutOptimized(size: size)
-        }
     }
 }
 

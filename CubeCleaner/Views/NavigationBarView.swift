@@ -1,7 +1,6 @@
 // NavigationBarView.swift — 导航条视图（返回按钮 + 面包屑）
 import SwiftUI
 
-// MARK: - 导航条视图（返回按钮 + 面包屑）
 struct NavigationBarView: View {
     let currentRoot: TreeNode?
     let rootNode: TreeNode?

@@ -1,7 +1,6 @@
 // EmptyStateView.swift — 空状态视图（脉冲图标 + 材质卡）
 import SwiftUI
 
-// MARK: - 空状态视图（脉冲图标 + 材质卡）
 struct EmptyStateView: View {
     @State private var pulse = false
 

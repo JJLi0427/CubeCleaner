@@ -2,8 +2,7 @@
 
 import Foundation
 
-// MARK: - 错误类型定义
-/// 文件系统操作相关的错误类型
+/// 文件系统操作相关的错误类型。
 enum FileSystemError: LocalizedError {
     case accessDenied
     case invalidPath
