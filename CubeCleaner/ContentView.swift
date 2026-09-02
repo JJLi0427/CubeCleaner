@@ -77,6 +77,7 @@ struct ContentView: View {
                                 withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                                     currentRoot = currentRoot?.parent
                                 }
+                                highlightedFileType = nil
                                 Task {
                                     await updateLayoutOptimized(size: geometry.size)
                                 }
@@ -85,6 +86,7 @@ struct ContentView: View {
                                 withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                                     currentRoot = node
                                 }
+                                highlightedFileType = nil
                                 Task {
                                     await updateLayoutOptimized(size: geometry.size)
                                 }
@@ -124,6 +126,8 @@ struct ContentView: View {
                                     withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                                         currentRoot = node
                                     }
+                                    // 钻取进入下一层时清空类型高亮，让文件类型选择只在当前层生效
+                                    highlightedFileType = nil
                                     Task {
                                         await updateLayoutOptimized(size: geometry.size)
                                     }
@@ -212,6 +216,15 @@ struct ContentView: View {
                 .onChange(of: fileSystemService.rootNode) { _, newNode in
                     withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                         currentRoot = newNode
+                    }
+                    // 新扫描/重新扫描后回到根层，清空类型高亮
+                    highlightedFileType = nil
+                    // rootNode 置 nil 表示新一轮扫描刚开始：清空顶部统计，避免残留旧数据
+                    if newNode == nil {
+                        typeBreakdown = []
+                        subtreeTotalSize = 0
+                        subtreeFileCount = 0
+                        subtreeFolderCount = 0
                     }
                     Task {
                         await updateLayoutOptimized(size: geometry.size)
