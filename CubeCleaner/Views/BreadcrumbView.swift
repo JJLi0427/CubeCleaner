@@ -1,7 +1,6 @@
 // BreadcrumbView.swift — 面包屑导航视图
 import SwiftUI
 
-// MARK: - 面包屑导航视图
 struct BreadcrumbView: View {
     let currentRoot: TreeNode?
     let onSelect: (TreeNode) -> Void

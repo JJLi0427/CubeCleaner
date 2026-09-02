@@ -1,9 +1,7 @@
 // TypeLegendStripView.swift — 横向类型分布图例条（chip 形式，位于比例条下方）
 import SwiftUI
 
-// MARK: - 横向类型分布图例条
 /// 按类型横向排布的 chip，点击高亮对应类型。
-/// 位于 StatsBarView 与 TypeRatioBarView 之下、TreeMap 之上。
 struct TypeLegendStripView: View {
     let entries: [ColorSchemeManager.TypeBreakdownEntry]
     let highlightedFileType: FileType?
@@ -27,7 +25,7 @@ struct TypeLegendStripView: View {
     }
 }
 
-// MARK: - 图例 chip（色块 + 名称 + 占比）
+// 图例 chip（色块 + 名称 + 占比）
 struct LegendChip: View {
     let entry: ColorSchemeManager.TypeBreakdownEntry
     let isHighlighted: Bool

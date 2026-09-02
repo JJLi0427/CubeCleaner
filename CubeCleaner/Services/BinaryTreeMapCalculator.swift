@@ -1,75 +1,57 @@
-// BinaryTreeMapCalculator.swift — Binary Tree TreeMap 布局计算器
+// BinaryTreeMapCalculator.swift — Squarified TreeMap 布局计算器
 
 import SwiftUI
 import Combine
 import Foundation
 
-// MARK: - TreeMap 布局计算器
 /// Squarified TreeMap 布局算法（Bruls/Huijsen/van Wijk 2000）。
-/// 把子节点按面积比例铺进矩形，直接优化长宽比，消除细长条。
+/// 按面积比例把子节点铺进矩形，直接优化长宽比，消除细长条。
 class BinaryTreeMapCalculator: ObservableObject {
 
-    // MARK: - 核心常量
     private let colorSchemeManager = ColorSchemeManager.shared
-    private let minVisibleSize: CGFloat = 24  // 最小可见尺寸：24x24像素，用户能看清
-    private let maxDepth: Int = 8  // 限制递归深度，避免过度分割
-    private let minFileRatio: Double = 0.01  // 聚合阈值：小于总大小1%的文件归入"其他"块
+    private let minVisibleSize: CGFloat = 24
+    private let maxDepth: Int = 8
+    private let minFileRatio: Double = 0.01  // 小于总大小 1% 的文件归入"其他"块
 
-    // MARK: - 颜色深度基准（按类型最大叶子）
     private var maxSizeByType: [FileType: Int64] = [:]
 
-    // MARK: - 主入口
     /// 输入节点与可用矩形，输出叶子矩形列表。
     func calculateLayout(for node: TreeNode, in rect: CGRect) -> [TreeMapRectangle] {
-        // 太小就不画
         if rect.width < minVisibleSize || rect.height < minVisibleSize {
             return []
         }
 
-        // 设置全局最大值，用于颜色和阈值计算
         maxSizeByType = findMaxSizeByType(from: node)
 
-        // 入口为聚合"其他"块：用户双击钻取进来，需展开其内部小文件。
-        // 普通目录走默认分支；聚合节点只有在作为钻取根时才展开。
+        // 聚合"其他"块作为钻取根时需展开其内部小文件。
         if node.isAggregated {
             return binaryTreeMap(node: node, rect: rect, depth: 0, expandAggregated: true)
         }
 
-        // 开始递归
         return binaryTreeMap(node: node, rect: rect, depth: 0)
     }
 
-    // MARK: - 核心算法 - 递归分割
     private func binaryTreeMap(node: TreeNode, rect: CGRect, depth: Int, expandAggregated: Bool = false) -> [TreeMapRectangle] {
-        // 获取有效子节点
         let children = getValidChildren(of: node)
 
-        // 递归终止：没有子节点就画叶子
         if children.isEmpty {
             return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
-        // 聚合"其他"块：默认作为叶子矩形直接绘制，不参与递归二分。
-        // 当它是用户双击钻取的根节点时(expandAggregated=true)，
-        // 需展开其内部小文件供查看，越过此叶子逻辑继续递归。
+        // 聚合"其他"块默认作为叶子绘制；仅钻取根(expandAggregated=true)时展开内部小文件。
         if node.isAggregated && !expandAggregated {
             return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
-        // 太深了：节点作为单块叶子绘制，不再细分（避免线性切片制造细长条）
         if depth >= maxDepth {
             return [createLeafRectangle(node: node, rect: rect, depth: depth)]
         }
 
-        // Squarified 布局：优化长宽比让块尽量方
         return squarify(children, in: rect, depth: depth)
     }
 
-    // MARK: - Squarified Treemap（Bruls/Huijsen/van Wijk 2000）
-    // 直接优化长宽比，消除细长小条。
-
     /// 对 items 在 rect 内做 squarified 布局，递归子项。
-    /// 字节数按比例缩放到 rect 像素面积后再算长宽比，避免单位不匹配。
+    /// 字节数按比例缩放到 rect 像素面积后再算长宽比。
     private func squarify(_ items: [TreeNode], in rect: CGRect, depth: Int) -> [TreeMapRectangle] {
         let sorted = items.filter { $0.totalSize > 0 }.sorted { $0.totalSize > $1.totalSize }
         guard !sorted.isEmpty else { return [] }
@@ -82,7 +64,6 @@ class BinaryTreeMapCalculator: ObservableObject {
         let totalArea = Double(rect.width * rect.height)
         let scale = (totalArea > 0) ? (totalArea / totalSize) : 0
 
-        // 节点 + 缩放后面积（像素²），后续长宽比/带宽全用面积算
         let scaled: [(node: TreeNode, area: Double)] = sorted.map {
             ($0, Double($0.totalSize) * scale)
         }
@@ -104,14 +85,12 @@ class BinaryTreeMapCalculator: ObservableObject {
                 result.append(contentsOf: laid)
                 remaining = newRemaining
                 row = []
-                // 不前进 i，next 留到下一行
             } else {
                 row = tryRow
                 i += 1
             }
         }
 
-        // 冲刷最后一行
         if !row.isEmpty {
             let (laid, _) = layoutRow(row, in: remaining, depth: depth)
             result.append(contentsOf: laid)
@@ -121,17 +100,15 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /// 计算一行在 rect 内的最差长宽比（越大越差，1.0 为正方形）。
-    /// row 用缩放后面积（像素²），rect 用像素。
     private func worstAspectRatio(_ row: [(node: TreeNode, area: Double)], in rect: CGRect) -> Double {
         guard !row.isEmpty else { return .infinity }
         let s = Double(Swift.min(rect.width, rect.height))
         guard s > 0 else { return .infinity }
         let rowArea = row.reduce(Double(0)) { $0 + $1.area }
         guard rowArea > 0 else { return .infinity }
-        let w = rowArea / s  // 行的带宽厚度（像素）
+        let w = rowArea / s
         guard w > 0 else { return .infinity }
 
-        // 每项 h_i = itemArea / w（像素），长宽比 max(w/h_i, h_i/w)
         var worst = 0.0
         for item in row {
             let h = item.area / w
@@ -142,24 +119,22 @@ class BinaryTreeMapCalculator: ObservableObject {
     }
 
     /// 沿短边方向布一行，返回（已布局矩形, 剩余矩形）。
-    /// row 用缩放后面积（像素²）。
     private func layoutRow(_ row: [(node: TreeNode, area: Double)], in rect: CGRect, depth: Int)
         -> ([TreeMapRectangle], CGRect)
     {
         let rowArea = row.reduce(Double(0)) { $0 + $1.area }
 
         let isWide = rect.width >= rect.height
-        let s = Double(Swift.min(rect.width, rect.height))  // 行沿此边布
-        let w = (s > 0) ? (rowArea / s) : 0  // 带宽厚度（像素）
+        let s = Double(Swift.min(rect.width, rect.height))
+        let w = (s > 0) ? (rowArea / s) : 0
 
         var result: [TreeMapRectangle] = []
-        var cursor: Double = 0  // 行内累计长度（像素）
+        var cursor: Double = 0
 
         for item in row {
-            let length = (rowArea > 0) ? (item.area / rowArea) * s : 0  // 该项沿短边方向占的长度（像素）
+            let length = (rowArea > 0) ? (item.area / rowArea) * s : 0
             let subRect: CGRect
             if isWide {
-                // 带在左侧（宽 w，满高），项沿高度方向排
                 subRect = CGRect(
                     x: rect.minX,
                     y: rect.minY + CGFloat(cursor),
@@ -167,7 +142,6 @@ class BinaryTreeMapCalculator: ObservableObject {
                     height: CGFloat(length)
                 )
             } else {
-                // 带在顶部（高 w，满宽），项沿宽度方向排
                 subRect = CGRect(
                     x: rect.minX + CGFloat(cursor),
                     y: rect.minY,
@@ -179,10 +153,8 @@ class BinaryTreeMapCalculator: ObservableObject {
             result.append(contentsOf: binaryTreeMap(node: item.node, rect: subRect, depth: depth))
         }
 
-        // 剩余矩形：去掉带宽 w 的一侧
         let remaining: CGRect
         if isWide {
-            // 带占左侧 [0, w]，剩余在右
             remaining = CGRect(
                 x: rect.minX + CGFloat(w),
                 y: rect.minY,
@@ -190,7 +162,6 @@ class BinaryTreeMapCalculator: ObservableObject {
                 height: rect.height
             )
         } else {
-            // 带占顶部 [0, w]，剩余在下
             remaining = CGRect(
                 x: rect.minX,
                 y: rect.minY + CGFloat(w),
@@ -201,29 +172,20 @@ class BinaryTreeMapCalculator: ObservableObject {
         return (result, remaining)
     }
 
-    // MARK: - 工具函数
-
     /**
-     * 获取有效子节点 - 聚合"其他"块策略
-     *
-     * 规则：
-     * 1. 移除大小为0的节点
-     * 2. 按大小降序排序
-     * 3. 阈值 = 父目录总大小 × minFileRatio (1%)
-     * 4. 保留所有 >= 阈值的子项
-     * 5. 剩余子项聚合为一个虚拟"其他"节点（面积守恒，保留子项以支持双击钻取）
-     * 6. 边界：若全部 < 阈值，不聚合，保留前 10 大，避免空图
+     * 获取有效子节点，含"其他"块聚合策略：
+     * 1. 移除 size==0 节点（扫描边界叶子除外）
+     * 2. 按大小降序，阈值 = 父目录总大小 × minFileRatio (1%)
+     * 3. 保留所有 >= 阈值的子项，剩余聚合为一个虚拟"其他"节点（面积守恒，可钻取）
+     * 4. 边界：若全部 < 阈值，保留前 10 大，避免空图
      */
     private func getValidChildren(of parent: TreeNode) -> [TreeNode] {
-        // 扫描边界叶子（跨卷/符号链接/已计入）即使 size==0 也保留，让它们在 TreeMap 上可见。
-        // 其余 size==0 的子项按原逻辑过滤。
         let boundaryChildren = parent.children.filter { $0.scanBoundary != .normal }
         let nonZeroChildren = parent.children.filter {
             $0.scanBoundary == .normal && $0.totalSize > 0
         }
         guard !nonZeroChildren.isEmpty || !boundaryChildren.isEmpty else { return [] }
 
-        // 子节点不多，直接返回（含边界叶子）
         if nonZeroChildren.count <= 5 {
             return nonZeroChildren + boundaryChildren
         }
@@ -232,7 +194,6 @@ class BinaryTreeMapCalculator: ObservableObject {
         let totalSize = sortedChildren.reduce(Int64(0)) { $0 + $1.totalSize }
         let threshold = Int64(Double(totalSize) * minFileRatio)
 
-        // 分离保留项与待聚合项
         var kept: [TreeNode] = []
         var aggregatedChildren: [TreeNode] = []
 
@@ -244,20 +205,15 @@ class BinaryTreeMapCalculator: ObservableObject {
             }
         }
 
-        // 边界：若全部 < 阈值（即 kept 为空），保留前 10 大，不聚合
         if kept.isEmpty {
             return Array(sortedChildren.prefix(10)) + boundaryChildren
         }
 
-        // 没有可聚合的小文件，直接返回（含边界叶子）
         if aggregatedChildren.isEmpty {
             return kept + boundaryChildren
         }
 
-        // 构造虚拟"其他"节点 - 把待聚合的子项挂为它的 children，
-        // 这样双击该块可钻取进去看内部小文件。
-        // 注意：isDirectory 保持 false，使 totalSize 走文件分支返回 item.size，
-        // 保证面积守恒（若为 true 会叠加 children 总大小导致面积翻倍）。
+        // 虚拟"其他"节点：isDirectory 保持 false，使 totalSize 走文件分支返回 item.size（面积守恒）。
         let aggregatedSize = aggregatedChildren.reduce(Int64(0)) { $0 + $1.totalSize }
         let otherItem = FileSystemItem(
             name: "其他 (\(aggregatedChildren.count) 项)",
@@ -267,9 +223,6 @@ class BinaryTreeMapCalculator: ObservableObject {
         )
         let otherNode = TreeNode(item: otherItem, parent: parent)
         otherNode.markAsAggregated()
-        // 复用原有子节点（不改其 parent），仅挂到 otherNode.children 下，
-        // 供钻取后布局使用；面包屑只需沿 otherNode.parent 上溯即可。
-        // 聚合节点 totalSize 保持 item.size（面积守恒，见 computeTotalSize 的 isAggregated 短路）。
         for child in aggregatedChildren {
             otherNode.addChild(child)
         }
@@ -277,15 +230,12 @@ class BinaryTreeMapCalculator: ObservableObject {
         return kept + [otherNode]
     }
 
-    /**
-     * 查找每个 FileType 在子树内的最大叶子文件大小 - 用于颜色深度基准
-     */
+    /// 查找每个 FileType 在子树内的最大叶子文件大小，用于颜色深度基准。
     private func findMaxSizeByType(from node: TreeNode) -> [FileType: Int64] {
         var result: [FileType: Int64] = [:]
 
         func traverse(_ current: TreeNode) {
-            // 聚合"其他"块 isDirectory 为 false，但持有内部小文件，穿透遍历，
-            // 否则整块被当成单个 .other 文件，撑大 .other 的深度配色基准。
+            // 聚合"其他"块 isDirectory 为 false 但持有内部小文件，穿透遍历。
             if current.item.isDirectory || current.isAggregated {
                 current.children.forEach { traverse($0) }
             } else {
@@ -300,19 +250,13 @@ class BinaryTreeMapCalculator: ObservableObject {
         return result
     }
 
-    /**
-     * 创建叶子矩形 - 就是包装一下数据
-     */
-    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int, isAggregated: Bool = false) -> TreeMapRectangle {
+    private func createLeafRectangle(node: TreeNode, rect: CGRect, depth: Int) -> TreeMapRectangle {
         let color: Color
         if node.scanBoundary == .crossVolume {
-            // 跨挂载点卷：未计入，用半透明中性灰区分
             color = Color(.systemGray).opacity(0.35)
         } else if node.scanBoundary == .alreadyCounted {
-            // 硬链接/firmlink 已计入：更浅的灰
             color = Color(.systemGray).opacity(0.22)
         } else if node.scanBoundary == .symlink {
-            // 符号链接：最浅灰
             color = Color(.systemGray).opacity(0.18)
         } else if node.isAggregated {
             color = Color(.systemGray).opacity(0.5)

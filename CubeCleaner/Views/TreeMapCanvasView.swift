@@ -1,7 +1,7 @@
-// TreeMapCanvasView.swift — TreeMap Canvas 可视化视图（无层级问题）
+// TreeMapCanvasView.swift — TreeMap Canvas 可视化视图
 import SwiftUI
 
-// MARK: - TreeMap Canvas View (无层级问题的解决方案)
+// Canvas 一次性绘制全部矩形，无视图层级问题。
 struct TreeMapCanvasView: View {
     let rectangles: [TreeMapRectangle]
     let highlightedFileType: FileType?
@@ -23,12 +23,10 @@ struct TreeMapCanvasView: View {
             TimelineView(.animation) { timeline in
                 let progress = computeDimProgress(now: timeline.date)
                 Canvas { context, size in
-                    // 绘制所有矩形
                     for rectangle in rectangles {
                         drawRectangle(context: context, rectangle: rectangle, dimProgress: progress)
                     }
-                    // 顶层子(当前目录下的目录/独立文件)包络外框：把属于同一顶层子的
-                    // 所有叶子块区域圈起来，目录用青色粗框、独立文件用主色框，一眼分组。
+                    // 顶层子分组包络外框：把同一顶层子的叶子块区域圈起来分组。
                     for group in groupBoundingBoxes() {
                         let framePath = Path(roundedRect: group.box.insetBy(dx: 1, dy: 1),
                                              cornerRadius: Radius.card)
@@ -41,8 +39,7 @@ struct TreeMapCanvasView: View {
                 }
             }
 
-            // 悬停高亮浮层：macOS 26 用液态玻璃高亮（透出下方矩形颜色 + 玻璃边缘高光），
-            // 旧系统回退为白色细描边。Canvas 命令式绘制无法直接动画透明度，用 SwiftUI 浮层。
+            // 悬停高亮浮层：macOS 26 用液态玻璃（透出下方颜色 + 边缘高光），旧系统回退白色描边。
             if let hov = hoveredRectangle {
                 Group {
                     if #available(macOS 26.0, *) {
@@ -81,7 +78,7 @@ struct TreeMapCanvasView: View {
             }
         }
         .gesture(
-            // 双击优先；若未触发双击则作为单击。避免单击打开详情浮层吞掉双击的第二下。
+            // 双击优先；未触发双击则作为单击，避免单击吞掉双击第二下。
             SpatialTapGesture(count: 2)
                 .onEnded { value in
                     if let hitRectangle = findRectangleAt(value.location) {
@@ -97,7 +94,6 @@ struct TreeMapCanvasView: View {
                 )
         )
         .gesture(
-            // 长按手势
             LongPressGesture(minimumDuration: 0.5)
                 .sequenced(before: DragGesture(minimumDistance: 0))
                 .onEnded { value in
@@ -114,11 +110,10 @@ struct TreeMapCanvasView: View {
                 }
         )
         .onContinuousHover { phase in
-            // 复活悬停高亮：根据鼠标位置实时更新 hoveredRectangle
             switch phase {
             case .active(let location):
                 let newHover = findRectangleAt(location)
-                // 去重：仅当悬停目标真变时才更新+回调，避免高频抖动
+                // 仅当悬停目标真变时才更新+回调，避免高频抖动
                 if hoveredRectangle?.id != newHover?.id {
                     withAnimation(.easeOut(duration: 0.15)) {
                         hoveredRectangle = newHover
@@ -178,15 +173,11 @@ struct TreeMapCanvasView: View {
         return ft == highlightedFileType
     }
 
-    /**
-     * 绘制单个矩形 - 直接Canvas绘制，无视图层级
-     */
     private func drawRectangle(context: GraphicsContext, rectangle: TreeMapRectangle, dimProgress: Double) {
         let rect = rectangle.rect
         let isHovered = hoveredRectangle?.id == rectangle.id
 
-        // 绘制背景 - 颜色深度由 depthColor 承载(亮度通道)，此处透明度用常量；
-        // 高亮类型保持原色，其它按 dimProgress 降透（0=不降，1=降到 0.2）
+        // 高亮类型保持原色，其它按 dimProgress 降透（1=降到 0.2）
         let dimmed = highlightedFileType != nil && !isHighlighted(rectangle)
         let baseOpacity: Double = isHovered ? 0.95 : 0.85
         let dimFactor = dimmed ? (1.0 - 0.8 * dimProgress) : 1.0
@@ -196,14 +187,13 @@ struct TreeMapCanvasView: View {
             with: .color(rectangle.color.opacity(opacity))
         )
 
-        // 绘制边框 - 内部块统一细线；顶层子分组用包络外框(见 groupBoundingBoxes)表达。
         context.stroke(
             Path(rect),
             with: .color(.primary.opacity(0.18)),
             lineWidth: 0.5
         )
 
-        // 扫描边界角标：跨卷/符号链接/已计入 各用不同 SF Symbol 标记，一眼区分。
+        // 扫描边界角标：跨卷/符号链接/已计入 各用不同 SF Symbol 标记。
         let boundary = rectangle.node.scanBoundary
         if boundary != .normal && rect.width > 28 && rect.height > 16 {
             let iconName: String
@@ -214,7 +204,6 @@ struct TreeMapCanvasView: View {
             case .normal: iconName = ""
             }
             if !iconName.isEmpty {
-                // 用 Text 包裹 Image 以便 GraphicsContext.resolve 解析尺寸与颜色。
                 let badge = Text(Image(systemName: iconName))
                     .font(.system(size: min(11, rect.height / 3)))
                     .foregroundColor(.secondary)
@@ -230,7 +219,6 @@ struct TreeMapCanvasView: View {
             }
         }
 
-        // 绘制文本 - 如果矩形足够大
         if rectangle.shouldShowLabel && !rectangle.displayName.isEmpty {
             let textRect = CGRect(
                 x: rect.minX + 4,
@@ -248,7 +236,6 @@ struct TreeMapCanvasView: View {
                     in: textRect
                 )
 
-                // 绘制大小信息
                 if rectangle.canShowSize {
                     let sizeRect = CGRect(
                         x: rect.minX + 4,
@@ -270,13 +257,8 @@ struct TreeMapCanvasView: View {
         }
     }
 
-    /**
-     * 点击位置检测 - 手动计算哪个矩形被点击
-     * 这样就完全避免了视图层级问题
-     */
+    /// 从后往前遍历，模拟视觉上的"最上层"
     private func findRectangleAt(_ location: CGPoint) -> TreeMapRectangle? {
-        // 从后往前遍历，模拟视觉上的"最上层"
-        // 但实际上没有层级，只是逻辑上的优先级
         for rectangle in rectangles.reversed() {
             if rectangle.rect.contains(location) {
                 return rectangle
@@ -285,8 +267,7 @@ struct TreeMapCanvasView: View {
         return nil
     }
 
-    /// 顶层子分组包络框：每个"当前视野直接子项"(currentRoot 的直接子)把它名下所有
-    /// 叶子块的区域算 union 包围框。目录用青色框、独立文件用主色框，一眼区分同级项。
+    /// 顶层子分组包络框：每个"当前视野直接子项"把它名下所有叶子块的区域算 union 包围框。
     private struct GroupBox {
         let box: CGRect
         let color: Color
@@ -300,13 +281,12 @@ struct TreeMapCanvasView: View {
             var cur: TreeNode? = node
             while let n = cur {
                 if n.parent?.id == root.id { return n }
-                if n.id == root.id { return nil }  // 到根仍未命中
+                if n.id == root.id { return nil }
                 cur = n.parent
             }
             return nil
         }
 
-        // 按顶层子 id 聚合 union box + 记住该顶层子是否目录
         var boxes: [UUID: CGRect] = [:]
         var isDir: [UUID: Bool] = [:]
         for r in rectangles {

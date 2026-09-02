@@ -4,20 +4,12 @@ import SwiftUI
 import AppKit
 import Foundation
 
-// MARK: - 可视化模块
 // MARK: ColorSchemeManager - 颜色方案管理器
-/// 统一的颜色方案管理器
-/// 负责为不同类型的文件和文件夹分配颜色
-///
-/// 特性：
-/// - 单例模式，全局一致的颜色方案
-/// - 基于文件类型的智能配色
-/// - 支持动态透明度调整
-/// - 文件夹和文件的区分显示
+/// 为不同类型文件/文件夹分配颜色（单例，全局一致）。
 class ColorSchemeManager: ObservableObject {
     static let shared = ColorSchemeManager()
 
-    /// 高饱和调色板（v0.3）— 固定 RGB，不做亮/暗分别调色
+    /// 高饱和调色板 — 固定 RGB，不做亮/暗分别调色
     private let fileTypeColors: [FileType: Color] = [
         .document: Color(red: 0.039, green: 0.518, blue: 1.0),     // #0A84FF
         .image: Color(red: 0.188, green: 0.820, blue: 0.345),      // #30D158
@@ -34,16 +26,6 @@ class ColorSchemeManager: ObservableObject {
 
     private init() {}
 
-    /// 获取节点对应的颜色
-    func color(for node: TreeNode) -> Color {
-        if node.item.isDirectory {
-            return directoryColor.opacity(0.7)
-        }
-
-        let fileType = FileType.from(extension: node.item.fileExtension)
-        return fileTypeColors[fileType] ?? .gray
-    }
-
     /// 获取文件类型对应的颜色
     func color(for fileType: FileType) -> Color {
         return fileTypeColors[fileType] ?? .gray
@@ -57,7 +39,7 @@ class ColorSchemeManager: ObservableObject {
     /// 按类型内最大块为基准调亮度：ratio=1(类型内最大)→原色最深，ratio→0→向浅提亮。
     /// 提亮公式：c' = c + (1-c)*(1-ratio)*0.6。文件夹/聚合由调用方处理，本方法仅处理普通文件。
     func depthColor(for node: TreeNode, maxSizeInType: Int64) -> Color {
-        let baseColor = color(for: node)
+        let baseColor = color(for: FileType.from(extension: node.item.fileExtension))
         guard maxSizeInType > 0 else { return baseColor }
         let ratio = Double(node.totalSize) / Double(maxSizeInType)
         let clampedRatio = min(max(ratio, 0.0), 1.0)
